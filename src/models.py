@@ -188,10 +188,7 @@ class TPTModel(nn.Module):
         self.device = device or ("cuda" if torch.cuda.is_available() else "cpu")
 
         clip_model: clip.model.CLIP
-        # scalene-disable
         clip_model, _ = clip.load(arch, device=self.device, jit=False)
-        # scalene-enable
-        
         self.dtype = clip_model.visual.conv1.weight.dtype
         # self.clip = clip_model
         self.image_encoder = clip_model.visual

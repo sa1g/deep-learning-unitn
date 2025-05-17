@@ -20,7 +20,11 @@ def bench(
 
     start = time.time()
 
-    for image, label in tqdm(dataloader):
+    total_tqdm = reduce if reduce is not None else len(dataloader)
+    # ░▒█
+    # ascii=" ▖▘▝▗▚▞█"
+    # ascii=' >='
+    for image, label in tqdm(dataloader, total=total_tqdm, ascii=" ▖▘▝▗▚▞█"):
         image = image.to(device)
         label = label.to(device)
 
