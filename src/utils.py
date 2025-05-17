@@ -4,6 +4,7 @@ import torch.nn.functional as F
 import time
 from tqdm import tqdm
 
+
 def bench(
     model: nn.Module,
     dataloader: DataLoader,
@@ -26,19 +27,10 @@ def bench(
     # ascii=' >='
     for image, label in tqdm(dataloader, total=total_tqdm, ascii=" ▖▘▝▗▚▞█"):
         image = image.to(device)
-        label = label.to(device)
 
-        # # with torch.no_grad():
-        # logits = model(image)
-
-        # # pred_class = logits.argmax(dim=-1)
-        # marginal_prob = F.softmax(logits, dim=1).mean(0)
-        # pred_class = marginal_prob.argmax().item()
-
-        # total += 1
-        # correct += int((pred_class == label).max().item())
-
+        # start1 = time.time()
         pred_class = model(image)
+        # print(f"model: {(time.time() - start1) * 1000:.2f} ms")
 
         total += 1
         correct += int((pred_class == label))
