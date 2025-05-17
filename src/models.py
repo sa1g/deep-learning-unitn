@@ -192,6 +192,8 @@ class TPTModel(nn.Module):
         self.dtype = clip_model.visual.conv1.weight.dtype
         # self.clip = clip_model
         self.image_encoder = clip_model.visual
+        # self.image_encoder.requires_grad_(False)
+        # self.image_encoder.eval()
 
         self.logit_scale = clip_model.logit_scale.data
         self.positional_embedding = clip_model.positional_embedding
@@ -231,20 +233,20 @@ class TPTModel(nn.Module):
 
         return x
 
-    def encode_image(self, image: torch.Tensor) -> torch.Tensor:
-        """
-        Encode the image using the CLIP model.
+    # def encode_image(self, image: torch.Tensor) -> torch.Tensor:
+    #     """
+    #     Encode the image using the CLIP model.
 
-        Args:
-            image (torch.Tensor): Input image.
+    #     Args:
+    #         image (torch.Tensor): Input image.
 
-        Returns:
-            image_features (torch.Tensor): Normalized encoded image features.
-        """
-        image_features = self.image_encoder(image.type(self.dtype))
-        image_features = image_features / image_features.norm(dim=-1, keepdim=True)
+    #     Returns:
+    #         image_features (torch.Tensor): Normalized encoded image features.
+    #     """
+    #     image_features = self.image_encoder(image.type(self.dtype))
+    #     image_features = image_features / image_features.norm(dim=-1, keepdim=True)
 
-        return image_features
+    #     return image_features
 
     def forward(self, image: torch.Tensor, is_image: bool = True) -> torch.Tensor:
         """
@@ -257,9 +259,14 @@ class TPTModel(nn.Module):
         Returns:
             logits (torch.Tensor): Logits from the CLIP model.
         """
+        # with torch.no_grad():
+        #     image_features = self.image_encoder(image)
+        #     image_features = image_features / image_features.norm(dim=-1, keepdim=True)
+
         if is_image:
             with torch.no_grad():
-                image_features = self.encode_image(image)
+                image_features = self.image_encoder(image.type(self.dtype))
+                image_features = image_features / image_features.norm(dim=-1, keepdim=True)
         else:
             image_features = image
 
@@ -268,10 +275,13 @@ class TPTModel(nn.Module):
         txt_features = self.__encode_text(
             self.prompt_learner.tokenized_initial_full_prompt, embedded_prompt
         )
+        
         txt_features = txt_features / txt_features.norm(dim=-1, keepdim=True)
 
         logit_scale = self.logit_scale.exp()
         logits = logit_scale * image_features @ txt_features.t()
+
+        # return logits, image_features
 
         if is_image:
             return logits, image_features
@@ -355,9 +365,13 @@ class TPT(nn.Module):
                 input = input[-1].unsqueeze(0)
                 logits, _ = self.model(input)
 
+                marginal_prob = torch.softmax(logits, dim=1).mean(0)
+                pred_class = marginal_prob.argmax().item()
+
         self.__reset()
 
-        return logits
+        return pred_class
+        # return logits
 
     def __select_confident_samples(
         self, logits: torch.Tensor, top: float = 0.1

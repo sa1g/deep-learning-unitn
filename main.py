@@ -27,8 +27,8 @@ if __name__ == "__main__":
     my_tpt = TPT(
         class_names=dataset.class_code_to_label.values(), tta_steps=1, lr=0.005
     )
-    
-    accuracy, latency = bench(my_tpt, dataloader, device, reduce=2500)
+
+    accuracy, latency = bench(my_tpt, dataloader, device, reduce=30)
         
     print(f"Accuracy: {accuracy * 100:.2f}%")
     print(f"Latency: {latency * 1000:.2f} ms")

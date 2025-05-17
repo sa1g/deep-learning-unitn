@@ -28,15 +28,20 @@ def bench(
         image = image.to(device)
         label = label.to(device)
 
-        # with torch.no_grad():
-        logits = model(image)
+        # # with torch.no_grad():
+        # logits = model(image)
 
-        # pred_class = logits.argmax(dim=-1)
-        marginal_prob = F.softmax(logits, dim=1).mean(0)
-        pred_class = marginal_prob.argmax().item()
+        # # pred_class = logits.argmax(dim=-1)
+        # marginal_prob = F.softmax(logits, dim=1).mean(0)
+        # pred_class = marginal_prob.argmax().item()
+
+        # total += 1
+        # correct += int((pred_class == label).max().item())
+
+        pred_class = model(image)
 
         total += 1
-        correct += int((pred_class == label).max().item())
+        correct += int((pred_class == label))
 
         if reduce:
             if total > reduce:
