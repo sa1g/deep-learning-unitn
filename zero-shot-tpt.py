@@ -1,6 +1,7 @@
 # Accuracy: 49.37%
 # Latency: 141.43 ms
 
+import clip.model
 import torch
 
 torch.manual_seed(456)
@@ -20,7 +21,7 @@ from src.utils import bench
 
 class ClipWrapper(nn.Module):
     def __init__(
-        self, model: nn.Module, prompt: str = "a photo of a {}", device: str = None
+        self, model: clip.model.CLIP, prompt: str = "a photo of a {}", device: str = None
     ):
         super().__init__()
         self.device = "cuda" if torch.cuda.is_available() else "cpu"

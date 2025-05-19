@@ -21,7 +21,7 @@ class ClipWrapper(nn.Module):
         self.device = "cuda" if torch.cuda.is_available() else "cpu"
 
         self.tokenizer = open_clip.get_tokenizer("ViT-B-16")
-        self.model = model
+        self.model : open_clip.model.CLIP = model
         self.logit_scale = model.logit_scale.data
         # self.logit_scale = model.log
 
@@ -66,14 +66,20 @@ if __name__ == "__main__":
     dataloader, dataset = ResnetA(augmenter)
 
     # Load the CLIP model
-    clip_model, _, preprocess_val = open_clip.create_model_and_transforms(
-        # model_name="ViT-B-16", pretrained="datacomp_xl_s13b_b90k", device=device#, force_quick_gelu=True
-        model_name="ViT-B-16", pretrained="openai", device=device, force_quick_gelu=True
+    clip_model, _, _ = open_clip.create_model_and_transforms(
+        # model_name="ViT-B-32", pretrained="datacomp_xl_s13b_b90k", device=device#, force_quick_gelu=True
+        model_name="ViT-B-32", pretrained="openai", device=device, force_quick_gelu=True
     )
-    clip_model.eval()
+    # clip_model.eval()
 
     # Create a ClipSkeleton instance
     wrapper_clip = ClipWrapper(clip_model).to(device)
+
+    # for image, label in dataloader:
+    #     image = image.to(device)
+        
+    #     pred_class = wrapper_clip(image)
+
 
     accuracy, latency = bench(wrapper_clip, dataloader, device, reduce=30)
 
