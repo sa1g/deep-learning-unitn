@@ -1,7 +1,7 @@
 datasets/
 dataset/
-
-
+working_directory/
+runs/
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
