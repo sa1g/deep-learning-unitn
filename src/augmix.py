@@ -1,6 +1,6 @@
 import torch
 import torch.nn as nn
-from typing import List, Optional
+from typing import List, Optional, Tuple
 import numpy as np
 import kornia
 import kornia.augmentation as K
@@ -182,6 +182,29 @@ class AugMixKornia(nn.Module):
 
         return result.squeeze(0) if result.shape[0] == 1 else result
 
+
+def kornia_random_crop(images: torch.Tensor) -> torch.Tensor:
+    """
+    Applies random crop to a batch of images using Kornia's RandomResizedCrop.
+    Preserves the original image size while randomly cropping a portion.
+    """
+    b, c, h, w = images.shape
+
+    # Create random crop transform that:
+    # 1. Crops between 50% and 100% of original area
+    # 2. Maintains original aspect ratio
+    # 3. Resizes back to original dimensions
+    transform = K.RandomResizedCrop(
+        size=(h, w),
+        # scale=(0.5, 1.0),  # Crop between 50% and 100% of original area
+        # ratio=(1.0, 1.0),  # Maintain original aspect ratio
+        resample=kornia.constants.Resample.BICUBIC,
+        same_on_batch=False,  # Different crop for each image in batch
+    )
+
+    return transform(images)
+
+
 kornia_preprocess = nn.Sequential(
     K.SmallestMaxSize(
         224,
@@ -196,6 +219,7 @@ kornia_preprocess = nn.Sequential(
         std=torch.tensor([0.26862954, 0.26130258, 0.27577711]),
     ),
 )
+
 
 class ImageTransform(nn.Module):
     def __init__(self, model_transform, custom_transform=None, n_views=63, device=None):

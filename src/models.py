@@ -1,13 +1,14 @@
-import time
 from typing import List
 import numpy as np
 import open_clip
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import clip
 from dataclasses import dataclass
 from copy import deepcopy
+
+from open_clip.transformer import text_global_pool
+
 
 @dataclass(frozen=True)
 class CLIPModels:
@@ -21,7 +22,8 @@ class TPTPromptLearner(nn.Module):
     def __init__(
         self,
         class_names: List[str],
-        clip_model: clip.model.CLIP,
+        clip_model: open_clip.model.CLIP,
+        arch: CLIPModels = CLIPModels.ViTB32,
         base_prompt: str = "a photo of a [CLS]",
         device="cuda",
     ):
@@ -29,16 +31,18 @@ class TPTPromptLearner(nn.Module):
         self.device = device or ("cuda" if torch.cuda.is_available() else "cpu")
 
         self.class_names = class_names
-        self.dtype = clip_model.visual.conv1.weight.dtype
-        self.token_embedding = clip_model.token_embedding
-        self.token_embedding.requires_grad_(False)
 
-        self.tokenizer = open_clip.get_tokenizer("ViT-B-16")
-        # self.tokenizer = clip.tokenize
+        tokenizer = open_clip.get_tokenizer(arch)
 
-        self.__init_ctx_from_prompt(base_prompt=base_prompt)
+        self.__init_ctx_from_prompt(
+            tokenizer=tokenizer,
+            token_embedding=clip_model.token_embedding,
+            base_prompt=base_prompt,
+        )
 
-    def __init_ctx_from_prompt(self, base_prompt: str) -> None:
+    def __init_ctx_from_prompt(
+        self, tokenizer, token_embedding, base_prompt: str
+    ) -> None:
         """
         Initialize the context tokens from the base prompt.
 
@@ -59,13 +63,13 @@ class TPTPromptLearner(nn.Module):
         promt_suffix = base_prompt.split("[CLS]")[1]
 
         # "Clean" PAD, SOT and EOT tokens
-        c_token_sot = torch.tensor([[49406]]).to(self.device)  # SOT
-        c_token_eot = torch.tensor([[49407]]).to(self.device)  # EOT
+        c_token_sot = torch.tensor([[tokenizer.sot_token_id]]).to(self.device)
+        c_token_eot = torch.tensor([[tokenizer.eot_token_id]]).to(self.device)
         c_token_pad = torch.tensor([[0]]).to(self.device)  # PAD
 
         # Tokenize prefix, suffix and class names
-        tokenized_prefix = self.tokenizer(promt_prefix).to(self.device)
-        tokenized_suffix = self.tokenizer(promt_suffix).to(self.device)
+        tokenized_prefix = tokenizer(promt_prefix).to(self.device)
+        tokenized_suffix = tokenizer(promt_suffix).to(self.device)
 
         # remove PAD, SOT and EOT tokens
         # Extract "clean" tokens
@@ -80,23 +84,23 @@ class TPTPromptLearner(nn.Module):
             & (tokenized_suffix != c_token_pad)
         ].to(self.device)
 
-        tokenized_class_names = self.tokenizer(self.class_names).to(self.device)
+        tokenized_class_names = tokenizer(self.class_names).to(self.device)
 
         # BASE full prompt
         # [CLS] + prefix + class_name + suffix + EOT
         # pre-computed as it's used for all classes and images :)
-        self.tokenized_initial_full_prompt = self.tokenizer(
+        self.tokenized_initial_full_prompt = tokenizer(
             [base_prompt.replace("[CLS]", c) for c in self.class_names]
         )
 
         # Get base embeddings
         with torch.no_grad():
-            self.embedded_sot = self.token_embedding(c_token_sot)
-            self.embedded_eot = self.token_embedding(c_token_eot)
-            self.embedded_pad = self.token_embedding(c_token_pad)
-            self.embedded_prefix = self.token_embedding(c_tokenized_prefix)
-            self.embedded_suffix = self.token_embedding(c_tokenized_suffix)
-            embedded_class_names = self.token_embedding(tokenized_class_names)
+            self.embedded_sot = token_embedding(c_token_sot)
+            self.embedded_eot = token_embedding(c_token_eot)
+            self.embedded_pad = token_embedding(c_token_pad)
+            self.embedded_prefix = token_embedding(c_tokenized_prefix)
+            self.embedded_suffix = token_embedding(c_tokenized_suffix)
+            embedded_class_names = token_embedding(tokenized_class_names)
             self.embedded_max_len = embedded_class_names.shape[1]
 
         # Setup clean embedded_class_names (list)
@@ -184,119 +188,88 @@ class TPTPromptLearner(nn.Module):
 
 class TPTModel(nn.Module):
     def __init__(
-        self, class_names: List[str], arch: CLIPModels = CLIPModels.ViTB32, device="cuda"
+        self,
+        class_names: List[str],
+        arch: CLIPModels,
+        pretrained:str,
+        device="cuda",
     ):
         super().__init__()
         self.device = device or ("cuda" if torch.cuda.is_available() else "cpu")
 
-        # clip_model: clip.model.CLIP
-        clip_model, _ = clip.load(arch, device=self.device, jit=False)
-        
-        # clip_model, _, preprocess_val = open_clip.create_model_and_transforms(
-        # # model_name="ViT-B-16", pretrained="datacomp_xl_s13b_b90k", device=device#, force_quick_gelu=True
-        # model_name="ViT-B-16", pretrained="openai", device=device, force_quick_gelu=True
-        # )
-        
-        self.dtype = clip_model.visual.conv1.weight.dtype
-        # self.clip = clip_model
-        self.image_encoder = clip_model.visual
-        self.image_encoder.eval() # added for safety, should be cool
+        clip_model: open_clip.model.CLIP
+        clip_model, _, _ = open_clip.create_model_and_transforms(
+            model_name=arch,
+            pretrained=pretrained,
+            device=device,
+            force_quick_gelu=True,
+        )
 
-        self.logit_scale = clip_model.logit_scale.data
+        self.model = clip_model
+        self.tokenizer = open_clip.get_tokenizer(arch)
+        self.class_names = class_names
+
+        self.visual = clip_model.visual
+        self.visual.eval()
+
+        self.token_embedding = clip_model.token_embedding
+
         self.positional_embedding = clip_model.positional_embedding
         self.transformer = clip_model.transformer
-        self.transformer.eval() # added for safety, should be cool
-
         self.ln_final = clip_model.ln_final
         self.text_projection = clip_model.text_projection
+        self.attn_mask = clip_model.attn_mask
+        self.text_pool_type = clip_model.text_pool_type
 
         for _, param in self.named_parameters():
             param.requires_grad_(False)
 
         self.prompt_learner = TPTPromptLearner(
-            class_names=class_names, clip_model=clip_model
+            arch=arch, class_names=class_names, clip_model=clip_model
         )
 
-        self.class_names = class_names
+    def __encode_image(self, image, normalize: bool = False) -> torch.Tensor:
+        features = self.visual(image)
+        return F.normalize(features, dim=-1) if normalize else features
 
-        #
+    def __encode_text(self, text=None, normalize: bool = False):
+        cast_dtype = self.transformer.get_cast_dtype()
 
-    def __encode_text(
-        self, tokenized_prompt: torch.Tensor, embedded_prompt: torch.Tensor
-    ) -> torch.Tensor:
-        """
-        Encode the text prompt using the CLIP model.
-            The tokenizer is external.
+        x = self.prompt_learner().to(cast_dtype)
 
-        Source: CLIP source code. model.py#L343
-        """
-        x = embedded_prompt + self.positional_embedding.type(self.dtype)
-        x = x.permute(1, 0, 2).contiguous()  # NLP -> LND
-        x = self.transformer(x)
-        x = x.permute(1, 0, 2)  # LND -> NLD
-        x = self.ln_final(x).type(self.dtype)
-        
-        # take features from the eot embedding (eot_token is the highest number in each sequence)
-        # ORIGINAL:
-        x = (
-            x[torch.arange(x.shape[0]), tokenized_prompt.argmax(dim=-1)]
-            @ self.text_projection
-        )
+        text = self.prompt_learner.tokenized_initial_full_prompt
 
-        # CUSTOM:
-        # 120ms faster than the original
-        # Suppose that all prompts are the same length and
-        # EOT is the last token in the sequence
-        # eot_pos = tokenized_prompt.size(1) -1
-        # x = x[:, eot_pos, :] 
-        # x = x @ self.text_projection
-        
-        return x
+        x = x + self.positional_embedding.to(cast_dtype)
+        x = self.transformer(x, attn_mask=self.attn_mask)
+        x = self.ln_final(x)  # [batch_size, n_ctx, transformer.width]
+        x = text_global_pool(x, text, self.text_pool_type)
+        if self.text_projection is not None:
+            if isinstance(self.text_projection, nn.Linear):
+                x = self.text_projection(x)
+            else:
+                x = x @ self.text_projection
 
-    def forward(self, image: torch.Tensor, is_image: bool = True) -> torch.Tensor:
+        return F.normalize(x, dim=-1) if normalize else x
+
+    def forward(self, image: torch.Tensor) -> torch.Tensor:
         """
         Inference function for the CLIP model.
 
         Args:
             images (torch.Tensor): Input images.
-            is_image (bool): whether the input is an iamge or already image_features.
-                If False, the input is assumed to be already image features.
         Returns:
             logits (torch.Tensor): Logits from the CLIP model.
         """
-        if is_image:
-            with torch.no_grad():
-                image_features = self.image_encoder(image.type(self.dtype))
-                image_features = image_features / image_features.norm(dim=-1, keepdim=True)
-        else:
-            image_features = image
 
-        # embedded_prompt = self.prompt_learner().type(self.dtype)
+        with torch.no_grad():
+            image_features = self.__encode_image(image, normalize=True)
 
-        prompt = "a photo of a {}"
+        text_features = self.__encode_text(normalize=True)
 
-        embedded_prompt = torch.cat(
-            [
-                self.prompt_learner.tokenizer(prompt.format(c))
-                for c in self.class_names
-            ]
-        ).to(self.device)
+        logit_scale = self.model.logit_scale.exp()
+        logits = logit_scale * image_features @ text_features.t()
 
-        embedded_prompt = self.prompt_learner.token_embedding(
-            embedded_prompt).type(self.dtype)
-
-        txt_features = self.__encode_text(
-            self.prompt_learner.tokenized_initial_full_prompt, embedded_prompt
-        )
-        txt_features = txt_features / txt_features.norm(dim=-1, keepdim=True)
-
-        logit_scale = self.logit_scale.exp()
-        logits = logit_scale * image_features @ txt_features.t()
-
-        if is_image:
-            return logits, image_features
-        else:
-            return logits
+        return logits, None
 
     def reset(self):
         """
@@ -308,10 +281,11 @@ class TPTModel(nn.Module):
 class TPT(nn.Module):
     def __init__(
         self,
+        pretrained: str,
+        arch: CLIPModels,
         class_names: List[str],
         tta_steps: int = 1,
         lr: float = 0.0001,
-        arch: CLIPModels = CLIPModels.ViTB32,
         device="cuda",
     ):
         super().__init__()
@@ -320,8 +294,8 @@ class TPT(nn.Module):
 
         model = TPTModel(
             class_names=class_names,
-            # arch=arch,
-            arch="ViT-B/16",
+            arch=arch,
+            pretrained=pretrained,
             device=self.device,
         )
         self.model = model.to(self.device)
@@ -343,7 +317,7 @@ class TPT(nn.Module):
             tta_steps (int): Number of TTA steps.
         """
         self.tpt_steps = tta_steps
-    
+
     def forward(self, input: torch.Tensor) -> torch.Tensor:
         # manage Prompt learner finetuning
         # so do n iterations with fine tuning
@@ -353,7 +327,7 @@ class TPT(nn.Module):
         selected_idx = None
         for _ in range(self.tpt_steps):
             with torch.cuda.amp.autocast():
-                logits, image_features = self.model(input)
+                logits, _ = self.model(input)
 
                 # Select the most confident samples
                 if selected_idx is not None:
