@@ -32,12 +32,10 @@ if __name__ == "__main__":
         lr=5e-3,
     )
 
-    print(f"leanable params: {sum(p.numel() for p in my_tpt.parameters() if p.requires_grad)}")
-    print(f"total params: {sum(p.numel() for p in my_tpt.parameters())}")
-    
+    # print(f"leanable params: {sum(p.numel() for p in my_tpt.parameters() if p.requires_grad)}")
+    # print(f"total params: {sum(p.numel() for p in my_tpt.parameters())}")
 
+    accuracy, latency = bench(my_tpt, dataloader, device, reduce=30)
 
-    # accuracy, latency = bench(my_tpt, dataloader, device, reduce=30)
-
-    # print(f"Accuracy: {accuracy * 100:.2f}%")
-    # print(f"Latency: {latency * 1000:.2f} ms")
+    print(f"Accuracy: {accuracy * 100:.2f}%")
+    print(f"Latency: {latency * 1000:.2f} ms")

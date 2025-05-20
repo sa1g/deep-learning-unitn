@@ -207,6 +207,8 @@ class TPTModel(nn.Module):
         )
 
         self.model = clip_model
+        self.model.eval()
+
         self.tokenizer = open_clip.get_tokenizer(arch)
         self.class_names = class_names
 
@@ -320,6 +322,7 @@ class TPT(nn.Module):
             device=self.device,
         )
         self.model = model.to(self.device)
+        self.model.eval()
 
         # Get all trainable parameters (filter by requires_grad)
         trainable_params = [p for p in self.model.parameters() if p.requires_grad]
@@ -378,25 +381,13 @@ class TPT(nn.Module):
                     logits, selected_idx = self.__select_confident_samples(logits)
                     mu, sigma = self.compute_stats(image_features[selected_idx])
 
-
+                ### DAVIDE QUI
                 if step == 0:
                     # Adapt the layer norm parameters
                     for block in self.model.transformer.resblocks:                        
                         self.adapt_ln_params(block.ln_1, mu, sigma, mode="scale")
                         self.adapt_ln_params(block.ln_2, mu, sigma, mode="scale")
-                    self.adapt_ln_params(self.model.ln_final, mu, sigma, mode="scale")
-
-
-                    # projection = torch.nn.Linear(512, 768, bias=False).to(self.device)
-                    # mu_image = projection(mu).squeeze()
-                    # sigma_image = projection(sigma).squeeze()
-
-                    # # Adapt the layer norm parameters
-                    # for block in self.model.visual.transformer.resblocks:                        
-                    #     self.adapt_ln_params(block.ln_1, mu_image, sigma_image, mode="scale")
-                    #     self.adapt_ln_params(block.ln_2, mu_image, sigma_image, mode="scale")
-                    # self.adapt_ln_params(self.model.visual.ln_post, mu_image, sigma_image, mode="scale")
-
+                    self.adapt_ln_params(self.model.ln_final, mu, sigma, mode="scale")  
                 # Compute the average entropy loss
                 loss = self.__avg_entropy_loss(logits)
 
@@ -465,21 +456,14 @@ class TPT(nn.Module):
 
     def compute_stats(self, features: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         """
-        Compute per-instance mean (μ) and variance (σ²) for features.
-        Args:
-            features: (B, D) or (B, L, D)
-        Returns:
-            mu: (B, 1) or (B, L, 1)
-            var: (B, 1) or (B, L, 1)
+        Compute mean (μ) and variance (σ²) for features.
         """
-        print(f"features shape: {features.shape}")  
-
         mu = features.mean(dim=0, keepdim=True)
         var = features.var(dim=0, keepdim=True, unbiased=False)  # Match LN's behavior
         
         sigma = torch.sqrt(var + 1e-6)  # Avoid division by zero
 
-        return mu.squeeze(0), sigma.squeeze(0)
+        return mu.squeeze(0), sigma.squeeze(0) # [512], [512]
 
     def adapt_ln_params(
             self,
