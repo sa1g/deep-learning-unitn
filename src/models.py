@@ -324,6 +324,10 @@ class TPT(nn.Module):
         self.model = model.to(self.device)
         self.model.eval()
 
+        # TEST
+        self.model.visual.ln_post.requires_grad_(True)
+        self.model.ln_final.requires_grad_(True)
+
         # Get all trainable parameters (filter by requires_grad)
         trainable_params = [p for p in self.model.parameters() if p.requires_grad]
 
