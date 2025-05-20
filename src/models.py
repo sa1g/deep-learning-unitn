@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Tuple
 import numpy as np
 import open_clip
 import open_clip.transformer
@@ -212,7 +212,7 @@ class TPTModel(nn.Module):
         self.tokenizer = open_clip.get_tokenizer(arch)
         self.class_names = class_names
 
-        self.visual : open_clip.transformer.VisionTransformer = clip_model.visual
+        self.visual: open_clip.transformer.VisionTransformer = clip_model.visual
         self.visual.eval()
 
         self.token_embedding = clip_model.token_embedding
@@ -231,29 +231,55 @@ class TPTModel(nn.Module):
             arch=arch, class_names=class_names, clip_model=clip_model
         )
 
-        # # 512
-        # text_transformer: open_clip.transformer.Transformer = self.transformer
-        # text_out_ln: open_clip.transformer.LayerNorm = self.ln_final
+    def _pool(self, x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+        if self.visual.attn_pool is not None:
+            if self.visual.attn_pool_contrastive is not None:
+                # This is untested, WIP pooling that should match paper
+                x = self.visual.ln_post(
+                    x
+                )  # TBD LN first or separate one after each pool?
+                tokens = self.visual.attn_pool(x)
+                if self.visual.attn_pool_type == "parallel":
+                    pooled = self.visual.attn_pool_contrastive(x)
+                else:
+                    assert self.visual.attn_pool_type == "cascade"
+                    pooled = self.visual.attn_pool_contrastive(tokens)
+            else:
+                # this is the original OpenCLIP CoCa setup, does not match paper
+                x = self.visual.attn_pool(x)
+                x = self.visual.ln_post(x)
+                pooled, tokens = self.visual._global_pool(x)
+        elif self.visual.final_ln_after_pool:
+            pooled, tokens = self.visual._global_pool(x)
+            pooled = self.visual.ln_post(pooled)
+        else:
+            x = self.visual.ln_post(x)
+            pooled, tokens = self.visual._global_pool(x)
 
-        # for block in text_transformer.resblocks:
-        #     print(block.ln_1.weight.shape)
-        #     print(block.ln_2.weight.shape)
-        # print(text_out_ln.weight.shape)
+        return pooled, tokens, x
 
-        # # 768
-        # image_transformer: open_clip.transformer.Transformer = self.visual.transformer
-        # image_out_ln: open_clip.transformer.LayerNorm = self.visual.ln_post
+    def _forward_image(self, x: torch.Tensor) -> torch.Tensor:
+        x = self.visual._embeds(x)
+        x = self.visual.transformer(x)
 
-        # for block in image_transformer.resblocks:
-        #     print(block.ln_1.weight.shape)
-        #     print(block.ln_2.weight.shape)
-        # print(image_out_ln.weight.shape)
+        pooled, tokens, x = self._pool(x)
 
-        # exit()
+        if self.visual.proj is not None:
+            pooled = pooled @ self.visual.proj
+        if self.visual.output_tokens:
+            return pooled, tokens, x
 
-    def __encode_image(self, image, normalize: bool = False) -> torch.Tensor:
-        features = self.visual(image)
-        return F.normalize(features, dim=-1) if normalize else features
+        return pooled, x
+
+    def __encode_image(
+        self, image, normalize: bool = False
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        pooled_pre_norm, x = self._forward_image(image)
+        return (
+            F.normalize(pooled_pre_norm, dim=-1) if normalize else pooled_pre_norm,
+            pooled_pre_norm,
+            x,
+        )
 
     def __encode_text(self, text=None, normalize: bool = False):
         cast_dtype = self.transformer.get_cast_dtype()
@@ -285,14 +311,16 @@ class TPTModel(nn.Module):
         """
 
         with torch.no_grad():
-            image_features = self.__encode_image(image, normalize=True)
+            image_features, pooled_pre_norm, x = self.__encode_image(
+                image, normalize=True
+            )
 
         text_features = self.__encode_text(normalize=True)
 
         logit_scale = self.model.logit_scale.exp()
         logits = logit_scale * image_features @ text_features.t()
 
-        return logits, image_features
+        return logits, image_features, pooled_pre_norm, x
 
     def reset(self):
         """
@@ -324,7 +352,7 @@ class TPT(nn.Module):
         self.model = model.to(self.device)
         self.model.eval()
 
-        # TEST
+        # TEST - learnable layer norm
         self.model.visual.ln_post.requires_grad_(True)
         self.model.ln_final.requires_grad_(True)
 
@@ -339,20 +367,30 @@ class TPT(nn.Module):
 
         # Initialize backup lists
         self.ln_backup = {
-            'weights': [],  # For gamma (scale)
-            'biases': []    # For beta (shift)
+            "weights": [],  # For gamma (scale)
+            "biases": [],  # For beta (shift)
         }
 
         # Backup all LN params in text encoder
         for block in self.model.transformer.resblocks:
-            self.ln_backup['weights'].append(block.ln_1.weight.data.detach().clone())  # gamma for ln_1
-            self.ln_backup['biases'].append(block.ln_1.bias.data.detach().clone())     # beta for ln_1
-            self.ln_backup['weights'].append(block.ln_2.weight.data.detach().clone())  # gamma for ln_2
-            self.ln_backup['biases'].append(block.ln_2.bias.data.detach().clone())      # beta for ln_2
+            self.ln_backup["weights"].append(
+                block.ln_1.weight.data.detach().clone()
+            )  # gamma for ln_1
+            self.ln_backup["biases"].append(
+                block.ln_1.bias.data.detach().clone()
+            )  # beta for ln_1
+            self.ln_backup["weights"].append(
+                block.ln_2.weight.data.detach().clone()
+            )  # gamma for ln_2
+            self.ln_backup["biases"].append(
+                block.ln_2.bias.data.detach().clone()
+            )  # beta for ln_2
 
         # Backup final LN
-        self.ln_backup['weights'].append(self.model.ln_final.weight.data.detach().clone())
-        self.ln_backup['biases'].append(self.model.ln_final.bias.data.detach().clone())
+        self.ln_backup["weights"].append(
+            self.model.ln_final.weight.data.detach().clone()
+        )
+        self.ln_backup["biases"].append(self.model.ln_final.bias.data.detach().clone())
 
     def set_tta_steps(self, tta_steps: int) -> None:
         """
@@ -363,34 +401,55 @@ class TPT(nn.Module):
         """
         self.tpt_steps = tta_steps
 
-    def forward(self, input: torch.Tensor) -> torch.Tensor:
-        # manage Prompt learner finetuning
-        # so do n iterations with fine tuning
-        # then return the single prediction
-        # loss, etc, are 100% internal
+    def update_layernorm_stats(
+        self, ln: nn.LayerNorm, activations: torch.Tensor, mode: str, momentum=0.1
+    ):
+        """
+        Update LayerNorm parameters using running stats of activations.
+        This is a soft update, similar to momentum in BN.
+        """
+        with torch.no_grad():
+            mean = activations.mean(dim=0)
+            std = activations.std(dim=0, unbiased=False) + 1e-6
 
+            if mode == "scale":
+                ln.weight.data *= std
+                ln.bias.data += mean
+            elif mode == "replace":
+                ln.weight.data.fill_(1.0)
+                ln.bias.data.fill_(0.0)
+            elif mode == "hybrid":
+                # Store stats for custom forward (see below)
+                ln.mu_new = mean
+                ln.sigma_new = std
+            elif mode == "momentum":
+                # Update running stats
+                ln.weight.data = (1 - momentum) * ln.weight.data + momentum * std
+                ln.bias.data = (1 - momentum) * ln.bias.data + momentum * mean
+            else:
+                raise ValueError(f"Unknown mode: {mode}")
+
+
+    def forward(self, input: torch.Tensor) -> torch.Tensor:
         selected_idx = None
+
+        image_activations = None
+        text_activations = None
 
         for step in range(self.tpt_steps):
             with torch.cuda.amp.autocast():
-                logits, image_features = self.model(input)
+
+                logits, image_features, pooled_pre_norm, x = self.model(input)
 
                 # Select the most confident samples
                 if selected_idx is not None:
                     logits = logits[selected_idx]
-                    
                 else:
                     logits, selected_idx = self.__select_confident_samples(logits)
-                    # mu, sigma = self.compute_stats(image_features[selected_idx])
 
-                ## DAVIDE QUI
-                # if step == 0:
-                # # Adapt the layer norm parameters
-                #     # for block in self.model.transformer.resblocks:                        
-                #     #     self.adapt_ln_params(block.ln_1, mu, sigma, mode="hybrid")
-                #     #     self.adapt_ln_params(block.ln_2, mu, sigma, mode="hybrid")
-                #     self.adapt_ln_params(self.model.ln_final, mu, sigma, mode="scale") 
-                
+                if step == 0:
+                    image_activations = x[selected_idx]
+                    text_activations = pooled_pre_norm[selected_idx]
 
                 # Compute the average entropy loss
                 loss = self.__avg_entropy_loss(logits)
@@ -400,12 +459,14 @@ class TPT(nn.Module):
             self.scaler.step(self.optim)
             self.scaler.update()
 
+        # self.update_layernorm_stats(self.model.visual.ln_post, image_activations.mean(1), mode="hybrid")
+        # self.update_layernorm_stats(self.model.ln_final, text_activations, mode="hybrid")
 
         # Actual inference
         with torch.no_grad(), torch.autocast("cuda"):
             # take only the last image of the input
             input = input[-1].unsqueeze(0)
-            logits, _ = self.model(input)
+            logits, _, _, _ = self.model(input)
 
             marginal_prob = F.softmax(logits, dim=1).mean(0)
             pred_class = marginal_prob.argmax().item()
@@ -459,59 +520,12 @@ class TPT(nn.Module):
 
         return -(avg_logits * torch.exp(avg_logits)).sum(dim=-1)
 
-    def compute_stats(self, features: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
-        """
-        Compute mean (μ) and variance (σ²) for features.
-        """
-        mu = features.mean(dim=0, keepdim=True)
-        var = features.var(dim=0, keepdim=True, unbiased=False)  # Match LN's behavior
-        
-        sigma = torch.sqrt(var + 1e-6)  # Avoid division by zero
-
-        return mu.squeeze(0), sigma.squeeze(0) # [512], [512]
-
-    def adapt_ln_params(
-            self,
-            ln_layer: torch.nn.LayerNorm,
-            mu_new: torch.Tensor,
-            sigma_new: torch.Tensor,
-            mode: str = "scale",
-        ):
-            """
-            Args:
-                ln_layer: LayerNorm module to adapt.
-                mu_new: Computed mean (1, 1) or (B, 1).
-                sigma_new: Computed std (1, 1) or (B, 1).
-                mode: How to adapt:
-                    - "scale": γ* = γ * σ_new, β* = β + μ_new (lightweight)
-                    - "replace": γ* = 1, β* = 0 (override)
-                    - "hybrid": Normalize by (x-μ)/σ, then apply original γ/β
-            """
-            if mode == "scale":
-                ln_layer.weight.data *= sigma_new.squeeze()  # γ* = γ * σ
-                ln_layer.bias.data += mu_new.squeeze()  # β* = β + μ
-            elif mode == "replace":
-                ln_layer.weight.data.fill_(1.0)  # γ* = 1
-                ln_layer.bias.data.fill_(0.0)  # β* = 0
-            elif mode == "hybrid":
-                # Store stats for custom forward (see below)
-                ln_layer.mu_new = mu_new
-                ln_layer.sigma_new = sigma_new
-                # Override forward (optional)
-                original_forward = ln_layer.forward
-
-                def custom_forward(x):
-                    x_norm = (x - ln_layer.mu_new) / (ln_layer.sigma_new + 1e-6)
-                    return x_norm * ln_layer.weight + ln_layer.bias
-
-                ln_layer.forward = custom_forward
-
     def __reset(self) -> None:
         """Full reset of prompt learner and optimizer state"""
         # 1. Reset prompt embeddings
         for p in self.model.parameters():
             p.grad = None
-        
+
         self.model.reset()
 
         # with torch.no_grad():
@@ -519,20 +533,19 @@ class TPT(nn.Module):
         #     self.embedded_suffix.copy_(self.init_state_suffix)
 
         with torch.no_grad():
-        #     idx = 0
-        #     # Reset LN params in text encoder
-        #     for block in self.model.transformer.resblocks:
-        #         block.ln_1.weight.data.copy_(self.ln_backup['weights'][idx].clone())
-        #         block.ln_1.bias.data.copy_(self.ln_backup['biases'][idx].clone())
-        #         idx += 1
-        #         block.ln_2.weight.data.copy_(self.ln_backup['weights'][idx].clone())
-        #         block.ln_2.bias.data.copy_(self.ln_backup['biases'][idx].clone())
-        #         idx += 1
-        
-            # # Reset final LN
-            self.model.ln_final.weight.data.copy_(self.ln_backup['weights'][-1].clone())
-            self.model.ln_final.bias.data.copy_(self.ln_backup['biases'][-1].clone())
+            idx = 0
+            # Reset LN params in text encoder
+            for block in self.model.transformer.resblocks:
+                block.ln_1.weight.data.copy_(self.ln_backup["weights"][idx].clone())
+                block.ln_1.bias.data.copy_(self.ln_backup["biases"][idx].clone())
+                idx += 1
+                block.ln_2.weight.data.copy_(self.ln_backup["weights"][idx].clone())
+                block.ln_2.bias.data.copy_(self.ln_backup["biases"][idx].clone())
+                idx += 1
 
+            # # Reset final LN
+            self.model.ln_final.weight.data.copy_(self.ln_backup["weights"][-1].clone())
+            self.model.ln_final.bias.data.copy_(self.ln_backup["biases"][-1].clone())
 
         # # 2. Reset optimizer state
         self.optim.load_state_dict(deepcopy(self.optim_init))

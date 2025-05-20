@@ -26,20 +26,23 @@ if __name__ == "__main__":
     dataloader, dataset = ResnetA(augmenter)
 
     tta_steps = 1
+    lr = 5e-3
+    # lr = 1e-2
 # datacomp_xl_s13b_b90k
     my_tpt = TPT(
         arch="ViT-B-16",
         pretrained="openai",
         class_names=dataset.class_code_to_label.values(),
         tta_steps=tta_steps,
-        lr=5e-3,
+        lr=lr,
     )
 
-    # print(f"leanable params: {sum(p.numel() for p in my_tpt.parameters() if p.requires_grad)}")
-    # print(f"total params: {sum(p.numel() for p in my_tpt.parameters())}")
+    print(f"leanable params: {sum(p.numel() for p in my_tpt.parameters() if p.requires_grad)}")
+    print(f"total params: {sum(p.numel() for p in my_tpt.parameters())}")
     # exit()
 
-    accuracy, latency = bench(my_tpt, dataloader, device, reduce=200, comment=f"tpt {tta_steps} step {augmentations} - backprop ln layers")
+    # accuracy, latency = bench(my_tpt, dataloader, device, reduce=200, comment=f"tpt {tta_steps} step {augmentations} lr {lr} - backprop ln layers")
+    accuracy, latency = bench(my_tpt, dataloader, device, reduce=200, comment=f" mi - finetune ln 1 tta")
 
     print(f"Accuracy: {accuracy * 100:.2f}%")
     print(f"Latency: {latency * 1000:.2f} ms")

@@ -48,9 +48,8 @@ def bench(
 
         # break
         board.add_scalar("accuracy", correct / total, total)
-        board.add_scalar("metrics/latency (ms)", (time.time() - this_start) * 1000, total)
-        board.add_scalar("label/predict_class", pred_class, total)
-        board.add_scalar("label/label", label, total)
+        board.add_scalar("dbg/label/predict_class", pred_class, total)
+        board.add_scalar("dbg/label/label", label, total)
 
 
     end = time.time()
@@ -58,6 +57,9 @@ def bench(
     accuracy = correct / total
     latency = (end - start) / total  # ms
 
+    board.add_scalar("metrics/latency (ms)", latency)
+    board.add_scalar("metrics/accuracy", accuracy)
+    
     print(f"Accuracy: {accuracy * 100:.2f}%")
     print(f"Latency: {latency * 1000:.2f} ms")
 
