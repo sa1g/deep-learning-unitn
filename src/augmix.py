@@ -238,14 +238,15 @@ class ImageTransform(nn.Module):
         Apply the model transform and custom transform to the image.
         """
         with torch.no_grad():
+            torch.cuda.empty_cache()
+            
             image = image.to(self.device)
 
             if self.custom_transform is not None:
-                views = image.repeat(self.n_views, 1, 1, 1)
-                views = self.custom_transform(views)
-                views = torch.cat([views, image.unsqueeze(0)], dim=0)
-                views = self.model_transform(views)
-
-                return views
+                with torch.no_grad():
+                    views = torch.empty((self.n_views+1, *image.shape), device=self.device)
+                    views[:-1] = self.custom_transform(image.repeat(self.n_views, 1, 1, 1))
+                    views[-1] = image
+                    return self.model_transform(views)
             else:
                 return self.model_transform(image)

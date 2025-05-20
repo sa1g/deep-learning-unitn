@@ -3,6 +3,7 @@ from torch.utils.data import DataLoader
 import torch.nn.functional as F
 import time
 from tqdm import tqdm
+from torch.utils.tensorboard import SummaryWriter
 
 
 def bench(
@@ -15,6 +16,8 @@ def bench(
 
     The model must return logits.
     """
+
+    board = SummaryWriter()
 
     total = 0
     correct = 0
@@ -30,6 +33,7 @@ def bench(
 
         # start1 = time.time()
         pred_class = model(image)
+        del image
         # print(f"model: {(time.time() - start1) * 1000:.2f} ms")
 
         total += 1
@@ -40,6 +44,7 @@ def bench(
                 break
 
         # break
+        board.add_scalar("accuracy", correct / total, total)
 
     end = time.time()
 

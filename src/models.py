@@ -341,14 +341,14 @@ class TPT(nn.Module):
 
         # Backup all LN params in text encoder
         for block in self.model.transformer.resblocks:
-            self.ln_backup['weights'].append(block.ln_1.weight.data.clone())  # gamma for ln_1
-            self.ln_backup['biases'].append(block.ln_1.bias.data.clone())     # beta for ln_1
-            self.ln_backup['weights'].append(block.ln_2.weight.data.clone())  # gamma for ln_2
-            self.ln_backup['biases'].append(block.ln_2.bias.data.clone())      # beta for ln_2
+            self.ln_backup['weights'].append(block.ln_1.weight.data.detach().clone())  # gamma for ln_1
+            self.ln_backup['biases'].append(block.ln_1.bias.data.detach().clone())     # beta for ln_1
+            self.ln_backup['weights'].append(block.ln_2.weight.data.detach().clone())  # gamma for ln_2
+            self.ln_backup['biases'].append(block.ln_2.bias.data.detach().clone())      # beta for ln_2
 
         # Backup final LN
-        self.ln_backup['weights'].append(self.model.ln_final.weight.data.clone())
-        self.ln_backup['biases'].append(self.model.ln_final.bias.data.clone())
+        self.ln_backup['weights'].append(self.model.ln_final.weight.data.detach().clone())
+        self.ln_backup['biases'].append(self.model.ln_final.bias.data.detach().clone())
 
     def set_tta_steps(self, tta_steps: int) -> None:
         """
@@ -383,11 +383,13 @@ class TPT(nn.Module):
 
                 ### DAVIDE QUI
                 if step == 0:
-                    # Adapt the layer norm parameters
+                # Adapt the layer norm parameters
                     for block in self.model.transformer.resblocks:                        
                         self.adapt_ln_params(block.ln_1, mu, sigma, mode="scale")
                         self.adapt_ln_params(block.ln_2, mu, sigma, mode="scale")
-                    self.adapt_ln_params(self.model.ln_final, mu, sigma, mode="scale")  
+                    self.adapt_ln_params(self.model.ln_final, mu, sigma, mode="scale") 
+                #
+
                 # Compute the average entropy loss
                 loss = self.__avg_entropy_loss(logits)
 
@@ -395,6 +397,7 @@ class TPT(nn.Module):
             self.scaler.scale(loss).backward()
             self.scaler.step(self.optim)
             self.scaler.update()
+
 
         # Actual inference
         with torch.no_grad(), torch.autocast("cuda"):
@@ -504,31 +507,42 @@ class TPT(nn.Module):
     def __reset(self) -> None:
         """Full reset of prompt learner and optimizer state"""
         # 1. Reset prompt embeddings
+        for p in self.model.parameters():
+            p.grad = None
+        
         self.model.reset()
 
         # with torch.no_grad():
-            # self.embedded_prefix.copy_(self.init_state_prefix)
-            # self.embedded_suffix.copy_(self.init_state_suffix)
+        #     self.embedded_prefix.copy_(self.init_state_prefix)
+        #     self.embedded_suffix.copy_(self.init_state_suffix)
 
         with torch.no_grad():
             idx = 0
             # Reset LN params in text encoder
             for block in self.model.transformer.resblocks:
-                block.ln_1.weight.data.copy_(self.ln_backup['weights'][idx])
-                block.ln_1.bias.data.copy_(self.ln_backup['biases'][idx])
+                block.ln_1.weight.data.copy_(self.ln_backup['weights'][idx].clone())
+                block.ln_1.bias.data.copy_(self.ln_backup['biases'][idx].clone())
                 idx += 1
-                block.ln_2.weight.data.copy_(self.ln_backup['weights'][idx])
-                block.ln_2.bias.data.copy_(self.ln_backup['biases'][idx])
+                block.ln_2.weight.data.copy_(self.ln_backup['weights'][idx].clone())
+                block.ln_2.bias.data.copy_(self.ln_backup['biases'][idx].clone())
                 idx += 1
         
         # Reset final LN
-        self.model.ln_final.weight.data.copy_(self.ln_backup['weights'][idx])
-        self.model.ln_final.bias.data.copy_(self.ln_backup['biases'][idx])
+        self.model.ln_final.weight.data.copy_(self.ln_backup['weights'][idx].clone())
+        self.model.ln_final.bias.data.copy_(self.ln_backup['biases'][idx].clone())
 
 
         # # 2. Reset optimizer state
         self.optim.load_state_dict(deepcopy(self.optim_init))
 
+        # self.cleanup()
         # # 3. Reset gradient scaler if using AMP
         # if hasattr(self, "scaler"):
         #     self.scaler.load_state_dict(torch.cuda.amp.GradScaler().state_dict())
+
+    def cleanup(self):
+        """Explicit memory cleanup"""
+        torch.cuda.empty_cache()
+        if hasattr(self, 'scaler'):
+            self.scaler._init_scale = None
+            self.scaler._growth_tracker = None
