@@ -9,6 +9,7 @@ from src.models import TPT
 
 from src.utils import bench
 
+no = None
 
 if __name__ == "__main__":
     device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -31,12 +32,12 @@ if __name__ == "__main__":
         lr=5e-3,
     )
 
-    # print("learnable params:", sum(p.numel() for p in my_tpt.parameters() if p.requires_grad))
-    # print("total params:", sum(p.numel() for p in my_tpt.parameters()))
+    print(f"leanable params: {sum(p.numel() for p in my_tpt.parameters() if p.requires_grad)}")
+    print(f"total params: {sum(p.numel() for p in my_tpt.parameters())}")
+    
 
-    # exit(69)
 
-    accuracy, latency = bench(my_tpt, dataloader, device, reduce=None)
+    # accuracy, latency = bench(my_tpt, dataloader, device, reduce=30)
 
-    print(f"Accuracy: {accuracy * 100:.2f}%")
-    print(f"Latency: {latency * 1000:.2f} ms")
+    # print(f"Accuracy: {accuracy * 100:.2f}%")
+    # print(f"Latency: {latency * 1000:.2f} ms")

@@ -1,6 +1,7 @@
 from typing import List
 import numpy as np
 import open_clip
+import open_clip.transformer
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -191,7 +192,7 @@ class TPTModel(nn.Module):
         self,
         class_names: List[str],
         arch: CLIPModels,
-        pretrained:str,
+        pretrained: str,
         device="cuda",
     ):
         super().__init__()
@@ -227,6 +228,26 @@ class TPTModel(nn.Module):
         self.prompt_learner = TPTPromptLearner(
             arch=arch, class_names=class_names, clip_model=clip_model
         )
+
+        # # 512
+        # text_transformer: open_clip.transformer.Transformer = self.transformer
+        # text_out_ln: open_clip.transformer.LayerNorm = self.ln_final
+
+        # for block in text_transformer.resblocks:
+        #     print(block.ln_1.weight.shape)
+        #     print(block.ln_2.weight.shape)
+        # print(text_out_ln.weight.shape)
+
+        # # 768
+        # image_transformer: open_clip.transformer.Transformer = self.visual.transformer
+        # image_out_ln: open_clip.transformer.LayerNorm = self.visual.ln_post
+
+        # for block in image_transformer.resblocks:
+        #     print(block.ln_1.weight.shape)
+        #     print(block.ln_2.weight.shape)
+        # print(image_out_ln.weight.shape)
+
+        # exit()
 
     def __encode_image(self, image, normalize: bool = False) -> torch.Tensor:
         features = self.visual(image)
@@ -269,7 +290,7 @@ class TPTModel(nn.Module):
         logit_scale = self.model.logit_scale.exp()
         logits = logit_scale * image_features @ text_features.t()
 
-        return logits, None
+        return logits, image_features
 
     def reset(self):
         """
@@ -309,6 +330,23 @@ class TPT(nn.Module):
 
         self.optim_init = deepcopy(self.optim.state_dict())
 
+        # Initialize backup lists
+        self.ln_backup = {
+            'weights': [],  # For gamma (scale)
+            'biases': []    # For beta (shift)
+        }
+
+        # Backup all LN params in text encoder
+        for block in self.model.transformer.resblocks:
+            self.ln_backup['weights'].append(block.ln_1.weight.data.clone())  # gamma for ln_1
+            self.ln_backup['biases'].append(block.ln_1.bias.data.clone())     # beta for ln_1
+            self.ln_backup['weights'].append(block.ln_2.weight.data.clone())  # gamma for ln_2
+            self.ln_backup['biases'].append(block.ln_2.bias.data.clone())      # beta for ln_2
+
+        # Backup final LN
+        self.ln_backup['weights'].append(self.model.ln_final.weight.data.clone())
+        self.ln_backup['biases'].append(self.model.ln_final.bias.data.clone())
+
     def set_tta_steps(self, tta_steps: int) -> None:
         """
         Set the number of TTA steps.
@@ -325,15 +363,39 @@ class TPT(nn.Module):
         # loss, etc, are 100% internal
 
         selected_idx = None
-        for _ in range(self.tpt_steps):
+        mu = None
+        sigma = None
+
+        for step in range(self.tpt_steps):
             with torch.cuda.amp.autocast():
-                logits, _ = self.model(input)
+                logits, image_features = self.model(input)
 
                 # Select the most confident samples
                 if selected_idx is not None:
                     logits = logits[selected_idx]
+                    
                 else:
                     logits, selected_idx = self.__select_confident_samples(logits)
+                    mu, sigma = self.compute_stats(image_features[selected_idx])
+
+
+                if step == 0:
+                    # Adapt the layer norm parameters
+                    for block in self.model.transformer.resblocks:                        
+                        self.adapt_ln_params(block.ln_1, mu, sigma, mode="scale")
+                        self.adapt_ln_params(block.ln_2, mu, sigma, mode="scale")
+                    self.adapt_ln_params(self.model.ln_final, mu, sigma, mode="scale")
+
+
+                    # projection = torch.nn.Linear(512, 768, bias=False).to(self.device)
+                    # mu_image = projection(mu).squeeze()
+                    # sigma_image = projection(sigma).squeeze()
+
+                    # # Adapt the layer norm parameters
+                    # for block in self.model.visual.transformer.resblocks:                        
+                    #     self.adapt_ln_params(block.ln_1, mu_image, sigma_image, mode="scale")
+                    #     self.adapt_ln_params(block.ln_2, mu_image, sigma_image, mode="scale")
+                    # self.adapt_ln_params(self.model.visual.ln_post, mu_image, sigma_image, mode="scale")
 
                 # Compute the average entropy loss
                 loss = self.__avg_entropy_loss(logits)
@@ -401,10 +463,84 @@ class TPT(nn.Module):
 
         return -(avg_logits * torch.exp(avg_logits)).sum(dim=-1)
 
+    def compute_stats(self, features: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+        """
+        Compute per-instance mean (μ) and variance (σ²) for features.
+        Args:
+            features: (B, D) or (B, L, D)
+        Returns:
+            mu: (B, 1) or (B, L, 1)
+            var: (B, 1) or (B, L, 1)
+        """
+        print(f"features shape: {features.shape}")  
+
+        mu = features.mean(dim=0, keepdim=True)
+        var = features.var(dim=0, keepdim=True, unbiased=False)  # Match LN's behavior
+        
+        sigma = torch.sqrt(var + 1e-6)  # Avoid division by zero
+
+        return mu.squeeze(0), sigma.squeeze(0)
+
+    def adapt_ln_params(
+            self,
+            ln_layer: torch.nn.LayerNorm,
+            mu_new: torch.Tensor,
+            sigma_new: torch.Tensor,
+            mode: str = "scale",
+        ):
+            """
+            Args:
+                ln_layer: LayerNorm module to adapt.
+                mu_new: Computed mean (1, 1) or (B, 1).
+                sigma_new: Computed std (1, 1) or (B, 1).
+                mode: How to adapt:
+                    - "scale": γ* = γ * σ_new, β* = β + μ_new (lightweight)
+                    - "replace": γ* = 1, β* = 0 (override)
+                    - "hybrid": Normalize by (x-μ)/σ, then apply original γ/β
+            """
+            if mode == "scale":
+                ln_layer.weight.data *= sigma_new.squeeze()  # γ* = γ * σ
+                ln_layer.bias.data += mu_new.squeeze()  # β* = β + μ
+            elif mode == "replace":
+                ln_layer.weight.data.fill_(1.0)  # γ* = 1
+                ln_layer.bias.data.fill_(0.0)  # β* = 0
+            elif mode == "hybrid":
+                # Store stats for custom forward (see below)
+                ln_layer.mu_new = mu_new
+                ln_layer.sigma_new = sigma_new
+                # Override forward (optional)
+                original_forward = ln_layer.forward
+
+                def custom_forward(x):
+                    x_norm = (x - ln_layer.mu_new) / (ln_layer.sigma_new + 1e-6)
+                    return x_norm * ln_layer.weight + ln_layer.bias
+
+                ln_layer.forward = custom_forward
+
     def __reset(self) -> None:
         """Full reset of prompt learner and optimizer state"""
         # 1. Reset prompt embeddings
         self.model.reset()
+
+        # with torch.no_grad():
+            # self.embedded_prefix.copy_(self.init_state_prefix)
+            # self.embedded_suffix.copy_(self.init_state_suffix)
+
+        with torch.no_grad():
+            idx = 0
+            # Reset LN params in text encoder
+            for block in self.model.transformer.resblocks:
+                block.ln_1.weight.data.copy_(self.ln_backup['weights'][idx])
+                block.ln_1.bias.data.copy_(self.ln_backup['biases'][idx])
+                idx += 1
+                block.ln_2.weight.data.copy_(self.ln_backup['weights'][idx])
+                block.ln_2.bias.data.copy_(self.ln_backup['biases'][idx])
+                idx += 1
+        
+        # Reset final LN
+        self.model.ln_final.weight.data.copy_(self.ln_backup['weights'][idx])
+        self.model.ln_final.bias.data.copy_(self.ln_backup['biases'][idx])
+
 
         # # 2. Reset optimizer state
         self.optim.load_state_dict(deepcopy(self.optim_init))

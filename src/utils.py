@@ -39,6 +39,8 @@ def bench(
             if total > reduce:
                 break
 
+        # break
+
     end = time.time()
 
     accuracy = correct / total
