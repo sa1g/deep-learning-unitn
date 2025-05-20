@@ -10,6 +10,7 @@ def bench(
     model: nn.Module,
     dataloader: DataLoader,
     device: str,
+    comment: str,
     reduce: int | None = None,
 ):
     """Benchmark the model on the dataset.
@@ -17,7 +18,7 @@ def bench(
     The model must return logits.
     """
 
-    board = SummaryWriter()
+    board = SummaryWriter(comment=comment)
 
     total = 0
     correct = 0
@@ -29,6 +30,8 @@ def bench(
     # ascii=" ▖▘▝▗▚▞█"
     # ascii=' >='
     for image, label in tqdm(dataloader, total=total_tqdm, ascii=" ▖▘▝▗▚▞█"):
+        this_start = time.time()
+
         image = image.to(device)
 
         # start1 = time.time()
@@ -45,6 +48,10 @@ def bench(
 
         # break
         board.add_scalar("accuracy", correct / total, total)
+        board.add_scalar("metrics/latency (ms)", (time.time() - this_start) * 1000, total)
+        board.add_scalar("label/predict_class", pred_class, total)
+        board.add_scalar("label/label", label, total)
+
 
     end = time.time()
 

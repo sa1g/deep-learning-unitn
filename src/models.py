@@ -212,7 +212,7 @@ class TPTModel(nn.Module):
         self.tokenizer = open_clip.get_tokenizer(arch)
         self.class_names = class_names
 
-        self.visual = clip_model.visual
+        self.visual : open_clip.transformer.VisionTransformer = clip_model.visual
         self.visual.eval()
 
         self.token_embedding = clip_model.token_embedding
@@ -366,8 +366,6 @@ class TPT(nn.Module):
         # loss, etc, are 100% internal
 
         selected_idx = None
-        mu = None
-        sigma = None
 
         for step in range(self.tpt_steps):
             with torch.cuda.amp.autocast():
@@ -379,16 +377,16 @@ class TPT(nn.Module):
                     
                 else:
                     logits, selected_idx = self.__select_confident_samples(logits)
-                    mu, sigma = self.compute_stats(image_features[selected_idx])
+                    # mu, sigma = self.compute_stats(image_features[selected_idx])
 
-                ### DAVIDE QUI
-                if step == 0:
-                # Adapt the layer norm parameters
-                    for block in self.model.transformer.resblocks:                        
-                        self.adapt_ln_params(block.ln_1, mu, sigma, mode="scale")
-                        self.adapt_ln_params(block.ln_2, mu, sigma, mode="scale")
-                    self.adapt_ln_params(self.model.ln_final, mu, sigma, mode="scale") 
-                #
+                ## DAVIDE QUI
+                # if step == 0:
+                # # Adapt the layer norm parameters
+                #     # for block in self.model.transformer.resblocks:                        
+                #     #     self.adapt_ln_params(block.ln_1, mu, sigma, mode="hybrid")
+                #     #     self.adapt_ln_params(block.ln_2, mu, sigma, mode="hybrid")
+                #     self.adapt_ln_params(self.model.ln_final, mu, sigma, mode="scale") 
+                
 
                 # Compute the average entropy loss
                 loss = self.__avg_entropy_loss(logits)
@@ -517,32 +515,20 @@ class TPT(nn.Module):
         #     self.embedded_suffix.copy_(self.init_state_suffix)
 
         with torch.no_grad():
-            idx = 0
-            # Reset LN params in text encoder
-            for block in self.model.transformer.resblocks:
-                block.ln_1.weight.data.copy_(self.ln_backup['weights'][idx].clone())
-                block.ln_1.bias.data.copy_(self.ln_backup['biases'][idx].clone())
-                idx += 1
-                block.ln_2.weight.data.copy_(self.ln_backup['weights'][idx].clone())
-                block.ln_2.bias.data.copy_(self.ln_backup['biases'][idx].clone())
-                idx += 1
+        #     idx = 0
+        #     # Reset LN params in text encoder
+        #     for block in self.model.transformer.resblocks:
+        #         block.ln_1.weight.data.copy_(self.ln_backup['weights'][idx].clone())
+        #         block.ln_1.bias.data.copy_(self.ln_backup['biases'][idx].clone())
+        #         idx += 1
+        #         block.ln_2.weight.data.copy_(self.ln_backup['weights'][idx].clone())
+        #         block.ln_2.bias.data.copy_(self.ln_backup['biases'][idx].clone())
+        #         idx += 1
         
-        # Reset final LN
-        self.model.ln_final.weight.data.copy_(self.ln_backup['weights'][idx].clone())
-        self.model.ln_final.bias.data.copy_(self.ln_backup['biases'][idx].clone())
+            # # Reset final LN
+            self.model.ln_final.weight.data.copy_(self.ln_backup['weights'][-1].clone())
+            self.model.ln_final.bias.data.copy_(self.ln_backup['biases'][-1].clone())
 
 
         # # 2. Reset optimizer state
         self.optim.load_state_dict(deepcopy(self.optim_init))
-
-        # self.cleanup()
-        # # 3. Reset gradient scaler if using AMP
-        # if hasattr(self, "scaler"):
-        #     self.scaler.load_state_dict(torch.cuda.amp.GradScaler().state_dict())
-
-    def cleanup(self):
-        """Explicit memory cleanup"""
-        torch.cuda.empty_cache()
-        if hasattr(self, 'scaler'):
-            self.scaler._init_scale = None
-            self.scaler._growth_tracker = None

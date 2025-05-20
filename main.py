@@ -19,7 +19,7 @@ if __name__ == "__main__":
     augmenter = ImageTransform(
         model_transform=kornia_preprocess,
         custom_transform=kornia_random_crop,
-        n_views=63,
+        n_views=64,
     )
 
     dataloader, dataset = ResnetA(augmenter)
@@ -35,7 +35,7 @@ if __name__ == "__main__":
     # print(f"leanable params: {sum(p.numel() for p in my_tpt.parameters() if p.requires_grad)}")
     # print(f"total params: {sum(p.numel() for p in my_tpt.parameters())}")
 
-    accuracy, latency = bench(my_tpt, dataloader, device, reduce=2500)
+    accuracy, latency = bench(my_tpt, dataloader, device, reduce=200, comment="tpt 1 step 63 - check")
 
     print(f"Accuracy: {accuracy * 100:.2f}%")
     print(f"Latency: {latency * 1000:.2f} ms")
