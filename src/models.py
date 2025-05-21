@@ -352,9 +352,9 @@ class TPT(nn.Module):
         self.model = model.to(self.device)
         self.model.eval()
 
-        # TEST - learnable layer norm
-        self.model.visual.ln_post.requires_grad_(True)
-        self.model.ln_final.requires_grad_(True)
+        # # # TEST - learnable layer norm
+        # self.model.visual.ln_post.requires_grad_(True)
+        # self.model.ln_final.requires_grad_(True)
 
         # Get all trainable parameters (filter by requires_grad)
         trainable_params = [p for p in self.model.parameters() if p.requires_grad]
@@ -402,7 +402,7 @@ class TPT(nn.Module):
         self.tpt_steps = tta_steps
 
     def update_layernorm_stats(
-        self, ln: nn.LayerNorm, activations: torch.Tensor, mode: str, momentum=0.1
+        self, ln: nn.LayerNorm, activations: torch.Tensor, mode: str, momentum=0.5
     ):
         """
         Update LayerNorm parameters using running stats of activations.
