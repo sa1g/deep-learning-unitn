@@ -92,7 +92,7 @@ class TPTPromptLearner(nn.Module):
         # pre-computed as it's used for all classes and images :)
         self.tokenized_initial_full_prompt = tokenizer(
             [base_prompt.replace("[CLS]", c) for c in self.class_names]
-        )
+        ).to(self.device)
 
         # Get base embeddings
         with torch.no_grad():
@@ -269,17 +269,13 @@ class TPTModel(nn.Module):
         if self.visual.output_tokens:
             return pooled, tokens, x
 
-        return pooled, x
+        return pooled
 
     def __encode_image(
         self, image, normalize: bool = False
     ) -> Tuple[torch.Tensor, torch.Tensor]:
-        pooled_pre_norm, x = self._forward_image(image)
-        return (
-            F.normalize(pooled_pre_norm, dim=-1) if normalize else pooled_pre_norm,
-            pooled_pre_norm,
-            x,
-        )
+        pooled_pre_norm = self._forward_image(image)
+        return F.normalize(pooled_pre_norm, dim=-1) if normalize else pooled_pre_norm
 
     def __encode_text(self, text=None, normalize: bool = False):
         cast_dtype = self.transformer.get_cast_dtype()
@@ -311,16 +307,22 @@ class TPTModel(nn.Module):
         """
 
         with torch.no_grad():
-            image_features, pooled_pre_norm, x = self.__encode_image(
-                image, normalize=True
-            )
-
+            image_features = self.__encode_image(image, normalize=True)
         text_features = self.__encode_text(normalize=True)
+
+        temp1, temp2 = 0.1, 0.1
+
+        image_features = torch.exp(image_features / temp1) / torch.sum(
+            torch.exp(image_features / temp1), dim=1, keepdim=True
+        )
+        text_features = torch.exp(text_features / temp2) / torch.sum(
+            torch.exp(text_features / temp2), dim=1, keepdim=True
+        )
 
         logit_scale = self.model.logit_scale.exp()
         logits = logit_scale * image_features @ text_features.t()
 
-        return logits, image_features, pooled_pre_norm, x
+        return logits, image_features
 
     def reset(self):
         """
@@ -401,55 +403,19 @@ class TPT(nn.Module):
         """
         self.tpt_steps = tta_steps
 
-    def update_layernorm_stats(
-        self, ln: nn.LayerNorm, activations: torch.Tensor, mode: str, momentum=0.5
-    ):
-        """
-        Update LayerNorm parameters using running stats of activations.
-        This is a soft update, similar to momentum in BN.
-        """
-        with torch.no_grad():
-            mean = activations.mean(dim=0)
-            std = activations.std(dim=0, unbiased=False) + 1e-6
-
-            if mode == "scale":
-                ln.weight.data *= std
-                ln.bias.data += mean
-            elif mode == "replace":
-                ln.weight.data.fill_(1.0)
-                ln.bias.data.fill_(0.0)
-            elif mode == "hybrid":
-                # Store stats for custom forward (see below)
-                ln.mu_new = mean
-                ln.sigma_new = std
-            elif mode == "momentum":
-                # Update running stats
-                ln.weight.data = (1 - momentum) * ln.weight.data + momentum * std
-                ln.bias.data = (1 - momentum) * ln.bias.data + momentum * mean
-            else:
-                raise ValueError(f"Unknown mode: {mode}")
-
-
     def forward(self, input: torch.Tensor) -> torch.Tensor:
         selected_idx = None
-
-        image_activations = None
-        text_activations = None
 
         for step in range(self.tpt_steps):
             with torch.cuda.amp.autocast():
 
-                logits, image_features, pooled_pre_norm, x = self.model(input)
+                logits, image_features = self.model(input)
 
                 # Select the most confident samples
                 if selected_idx is not None:
                     logits = logits[selected_idx]
                 else:
                     logits, selected_idx = self.__select_confident_samples(logits)
-
-                if step == 0:
-                    image_activations = x[selected_idx]
-                    text_activations = pooled_pre_norm[selected_idx]
 
                 # Compute the average entropy loss
                 loss = self.__avg_entropy_loss(logits)
@@ -459,14 +425,11 @@ class TPT(nn.Module):
             self.scaler.step(self.optim)
             self.scaler.update()
 
-        # self.update_layernorm_stats(self.model.visual.ln_post, image_activations.mean(1), mode="hybrid")
-        # self.update_layernorm_stats(self.model.ln_final, text_activations, mode="hybrid")
-
         # Actual inference
         with torch.no_grad(), torch.autocast("cuda"):
             # take only the last image of the input
             input = input[-1].unsqueeze(0)
-            logits, _, _, _ = self.model(input)
+            logits, _ = self.model(input)
 
             marginal_prob = F.softmax(logits, dim=1).mean(0)
             pred_class = marginal_prob.argmax().item()
@@ -474,7 +437,6 @@ class TPT(nn.Module):
         self.__reset()
 
         return pred_class
-        # return logits
 
     def __select_confident_samples(
         self, logits: torch.Tensor, top: float = 0.1

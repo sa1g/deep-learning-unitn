@@ -38,16 +38,18 @@ class ClipWrapper(nn.Module):
 
         with torch.no_grad(), torch.autocast("cuda"):
             image_features = self.model.encode_image(x)
-            image_features /= image_features.norm(dim=-1, keepdim=True)
+            # image_features /= image_features.norm(dim=-1, keepdim=True)
+            image_features = F.normalize(image_features, dim=-1)
 
             text_features = self.model.encode_text(prompt)
-            text_features /= text_features.norm(dim=-1, keepdim=True)
+            # text_features /= text_features.norm(dim=-1, keepdim=True)
+            text_features = F.normalize(text_features, dim=-1)
 
-        logit_scale = self.logit_scale.exp()
-        logits = logit_scale * image_features @ text_features.t()
+            logit_scale = self.logit_scale.exp()
+            logits = logit_scale * image_features @ text_features.t()
 
-        marginal_prob = F.softmax(logits, dim=1).mean(0)
-        pred_class = marginal_prob.argmax().item()
+            marginal_prob = F.softmax(logits, dim=1).mean(0)
+            pred_class = marginal_prob.argmax().item()
 
         return pred_class
 
@@ -68,14 +70,14 @@ if __name__ == "__main__":
     # Load the CLIP model
     clip_model, _, _ = open_clip.create_model_and_transforms(
         # model_name="ViT-B-32", pretrained="datacomp_xl_s13b_b90k", device=device#, force_quick_gelu=True
-        model_name="ViT-B-32", pretrained="openai", device=device, force_quick_gelu=True
+        model_name="ViT-B-16", pretrained="openai", device=device, force_quick_gelu=True
     )
-    # clip_model.eval()
+    clip_model.eval()
 
     # Create a ClipSkeleton instance
     wrapper_clip = ClipWrapper(clip_model).to(device)
 
-    accuracy, latency = bench(wrapper_clip, dataloader, device, reduce=200, comment="zero shot clip")
+    accuracy, latency = bench(wrapper_clip, dataloader, device, reduce=200, comment="zero shot clip AAAA")
 
     print(f"Accuracy: {accuracy * 100:.2f}%")
     print(f"Latency: {latency * 1000:.2f} ms")
