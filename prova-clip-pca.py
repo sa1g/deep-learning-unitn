@@ -235,21 +235,76 @@ class ClipWrapper(nn.Module):
             x1 = x * mask
 
             original_class = self.get_class(x, prompt, self.encode_image)
-            masked_class = self.get_class(x1, prompt, self.encode_image)
+            masked_class = self.get_class(x, prompt, self.encode_image, other=True)
 
             # exit()
 
         return original_class, masked_class
 
-    def get_class(self, x, prompt, image_encoder) -> int:
-        image_features, _ = image_encoder(x, normalize=True)
+    def __select_confident_samples(
+        self, logits: torch.Tensor, top: float = 0.1
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        """
+        Selects the top-k samples with the lowest entropy from the logits.
 
+        Args:
+            logits (torch.Tensor): The logits from the model.
+            top (float): The fraction of samples to select.
+                For example, if top=0.1, it selects the top 10% of samples.
+        Returns:
+            torch.Tensor: The selected logits.
+            torch.Tensor: The indices of the selected samples.
+
+        [Reference](https://github.com/azshue/TPT/blob/63ecbace79694205d7884e63fdc3137a200f0b0e/tpt_classification.py#L41C5-L41C11)
+        """
+        batch_entropy = -(logits.softmax(1) * logits.log_softmax(1)).sum(1)
+        idx = torch.argsort(batch_entropy, descending=False)[
+            : int(batch_entropy.size()[0] * top)
+        ]
+
+        return logits[idx], idx
+
+    def get_class(self, x, prompt, image_encoder, other = False) -> int:
+        logits, _ = image_encoder(x, normalize=True)
+ 
         text_features = self.model.encode_text(prompt, normalize=True)
         logit_scale = self.logit_scale.exp()
-        logits = logit_scale * image_features @ text_features.t()
 
+        pred_class :int = 0
+
+        if other:
+            
+            
+            # method 1: take the most confident sample
+            best_logits, _ = self.__select_confident_samples(logits, 1/logits.shape[0])
+            logits = torch.cat((logits[-1].unsqueeze(0), best_logits), dim=0)
+            logits = logit_scale * logits @ text_features.t()
+            marginal_prob = F.softmax(logits, dim=1).mean(0)
+            pred_class = int(marginal_prob.argmax().item())
+            
+            # marginal_prob = F.softmax(logits, dim=1)
+            # pred_class = int(logits.argmax().item())
+
+
+            # # method 2: take the mean of the best
+            # logits1, _ = self.__select_confident_samples(logits)
+            # logits1 = torch.cat((logits[-1].unsqueeze(0), logits1), dim=0)
+
+            # logits1 = logit_scale * logits1 @ text_features.t()
+            # marginal_prob = F.softmax(logits1, dim=1).mean(0)
+            # pred_class = int(marginal_prob.argmax().item())
+            
+            print(f"other: {pred_class}")
+
+            return pred_class
+
+        logits = logits[-1:]
+
+        logits = logit_scale * logits @ text_features.t()
         marginal_prob = F.softmax(logits, dim=1).mean(0)
         pred_class: int = int(marginal_prob.argmax().item())
+
+        print(f"pred_class: {pred_class}")
 
         return pred_class
 
@@ -261,8 +316,8 @@ if __name__ == "__main__":
 
     augmenter = ImageTransform(
         model_transform=kornia_preprocess,
-        # custom_transform=kornia_augmix,
-        n_views=0,
+        custom_transform=kornia_augmix,
+        n_views=63,
     )
 
     dataloader, dataset = ResnetA(augmenter)
