@@ -66,7 +66,9 @@ def bench(
 
         c_a = correct / total
         m_a = masked_correct / total
-        print(f"Correct: {c_a*100:.2f}%, Masked Correct: {m_a*100:.2f}%")
+        print(
+            f"[{label}] [D: {pred_class}, M: {masked_class}] | Accuracy: [D: {c_a*100:.2f}%, M: {m_a*100:.2f}%]"
+        )
 
         # break
         # board.add_scalar("accuracy", correct / total, total)
@@ -147,7 +149,7 @@ class ClipWrapper(nn.Module):
                 .expand(1, 3, -1, -1)
                 .to(x.device)
             )
-            
+
             masks.append(mask)
 
         # Step 5: Stack into batch
@@ -163,8 +165,7 @@ class ClipWrapper(nn.Module):
         ).to(device)
 
         with torch.no_grad(), torch.autocast("cuda"):
-            mask = self.compute_pca_masks(x)  # [B, 3, 224, 224]
-
+            # mask = self.compute_pca_masks(x)  # [B, 3, 224, 224]
 
             # # # # _, tokens = self.encode_image(x, normalize=True)
             # # # # patch_embeddings = tokens.squeeze(0).cpu().numpy()
@@ -232,7 +233,7 @@ class ClipWrapper(nn.Module):
             # plt.show()
 
             # x1 = x * masks.squeeze(0)
-            x1 = x * mask
+            # x1 = x * mask
 
             original_class = self.get_class(x, prompt, self.encode_image)
             masked_class = self.get_class(x, prompt, self.encode_image, other=True)
@@ -264,27 +265,27 @@ class ClipWrapper(nn.Module):
 
         return logits[idx], idx
 
-    def get_class(self, x, prompt, image_encoder, other = False) -> int:
+    def get_class(self, x, prompt, image_encoder, other=False) -> int:
         logits, _ = image_encoder(x, normalize=True)
- 
+
         text_features = self.model.encode_text(prompt, normalize=True)
         logit_scale = self.logit_scale.exp()
 
-        pred_class :int = 0
+        pred_class: int = 0
 
         if other:
-            
-            
+
             # method 1: take the most confident sample
-            best_logits, _ = self.__select_confident_samples(logits, 1/logits.shape[0])
+            best_logits, _ = self.__select_confident_samples(
+                logits, 1 / logits.shape[0]
+            )
             logits = torch.cat((logits[-1].unsqueeze(0), best_logits), dim=0)
             logits = logit_scale * logits @ text_features.t()
             marginal_prob = F.softmax(logits, dim=1).mean(0)
             pred_class = int(marginal_prob.argmax().item())
-            
+
             # marginal_prob = F.softmax(logits, dim=1)
             # pred_class = int(logits.argmax().item())
-
 
             # # method 2: take the mean of the best
             # logits1, _ = self.__select_confident_samples(logits)
@@ -293,7 +294,7 @@ class ClipWrapper(nn.Module):
             # logits1 = logit_scale * logits1 @ text_features.t()
             # marginal_prob = F.softmax(logits1, dim=1).mean(0)
             # pred_class = int(marginal_prob.argmax().item())
-            
+
             print(f"other: {pred_class}")
 
             return pred_class

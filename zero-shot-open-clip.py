@@ -77,7 +77,5 @@ if __name__ == "__main__":
     # Create a ClipSkeleton instance
     wrapper_clip = ClipWrapper(clip_model).to(device)
 
-    accuracy, latency = bench(wrapper_clip, dataloader, device, reduce=200, comment="zero shot clip AAAA")
+    bench(wrapper_clip, dataloader, device, reduce=1200, comment="zero shot clip AAAA")
 
-    print(f"Accuracy: {accuracy * 100:.2f}%")
-    print(f"Latency: {latency * 1000:.2f} ms")

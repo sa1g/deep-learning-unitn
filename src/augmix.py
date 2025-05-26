@@ -131,56 +131,59 @@ class AugMixKornia(nn.Module):
         Returns:
             Augmented batch (same shape as input)
         """
-        # Input validation
-        if not isinstance(images, torch.Tensor):
-            images = K.image_to_tensor(images)
+        with torch.no_grad(), torch.cuda.amp.autocast():
+            # Input validation
+            if not isinstance(images, torch.Tensor):
+                images = K.image_to_tensor(images)
 
-        if images.dim() == 3:
-            images = images.unsqueeze(0)
+            if images.dim() == 3:
+                images = images.unsqueeze(0)
 
-        # Move to device if needed
-        if images.device != self.device:
-            images = images.to(self.device)
+            # Move to device if needed
+            if images.device != self.device:
+                images = images.to(self.device)
 
-        batch_size = images.shape[0]
+            batch_size = images.shape[0]
 
-        # Sample mixing weights from Dirichlet distribution
-        weights = (
-            torch.from_numpy(
-                np.random.dirichlet([self.alpha] * self.mixture_width, size=batch_size)
+            # Sample mixing weights from Dirichlet distribution
+            weights = (
+                torch.from_numpy(
+                    np.random.dirichlet([self.alpha] * self.mixture_width, size=batch_size)
+                )
+                .float()
+                .to(self.device)
+            )  # Shape (B, mixture_width)
+
+            # Sample weights for mixing with original
+            mix_weights = (
+                torch.from_numpy(
+                    np.random.dirichlet([self.alpha, self.alpha], size=batch_size)
+                )
+                .float()
+                .to(self.device)
+            )  # Shape (B, 2)
+
+            # Generate augmented versions for each mixture component
+            # Pre-allocate memory for augmented versions
+            augmented = torch.empty(
+                (self.mixture_width, batch_size, *images.shape[1:]), device=self.device
             )
-            .float()
-            .to(self.device)
-        )  # Shape (B, mixture_width)
 
-        # Sample weights for mixing with original
-        mix_weights = (
-            torch.from_numpy(
-                np.random.dirichlet([self.alpha, self.alpha], size=batch_size)
+            for i in range(self.mixture_width):
+                augmented[i] = self._apply_augmentation_chain(images)
+
+            # Weighted sum of augmented versions
+            mixed = torch.einsum("mbchw,bm->bchw", augmented, weights).to(self.device)
+
+            # Final mix with original image
+            result = (
+                mix_weights[:, 0:1, None, None] * images
+                + mix_weights[:, 1:2, None, None] * mixed
             )
-            .float()
-            .to(self.device)
-        )  # Shape (B, 2)
 
-        # Generate augmented versions for each mixture component
-        # Pre-allocate memory for augmented versions
-        augmented = torch.empty(
-            (self.mixture_width, batch_size, *images.shape[1:]), device=self.device
-        )
+            result = result.squeeze(0) if result.shape[0] == 1 else result
 
-        for i in range(self.mixture_width):
-            augmented[i] = self._apply_augmentation_chain(images)
-
-        # Weighted sum of augmented versions
-        mixed = torch.einsum("mbchw,bm->bchw", augmented, weights).to(self.device)
-
-        # Final mix with original image
-        result = (
-            mix_weights[:, 0:1, None, None] * images
-            + mix_weights[:, 1:2, None, None] * mixed
-        )
-
-        return result.squeeze(0) if result.shape[0] == 1 else result
+        return result
 
 
 def kornia_random_crop(images: torch.Tensor) -> torch.Tensor:
@@ -222,12 +225,12 @@ kornia_preprocess = nn.Sequential(
 
 
 class ImageTransform(nn.Module):
-    def __init__(self, model_transform, custom_transform=None, n_views=63, device=None):
+    def __init__(self, model_transform, custom_transform=None, n_views=63, device="cuda"):
         super().__init__()
         self.model_transform = model_transform
         self.custom_transform = custom_transform
         self.n_views = n_views
-        self.device = device or ("cuda" if torch.cuda.is_available() else "cpu")
+        self.device = device
 
         self.eval()
         # self.model_transform.eval()
@@ -237,7 +240,7 @@ class ImageTransform(nn.Module):
         """
         Apply the model transform and custom transform to the image.
         """
-        with torch.no_grad():
+        with torch.no_grad(), torch.cuda.amp.autocast():
             torch.cuda.empty_cache()
             
             image = image.to(self.device)
@@ -249,4 +252,5 @@ class ImageTransform(nn.Module):
                     views[-1] = image
                     return self.model_transform(views)
             else:
-                return self.model_transform(image)
+                with torch.no_grad():
+                    return self.model_transform(image)

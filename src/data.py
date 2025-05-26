@@ -154,6 +154,7 @@ class ImageNetADataset(Dataset):
 def ResnetA(
     augmenter: ImageTransform,
     root_dir="datasets/imagenet-a",
+    num_workers=0,
 ):
     """
     Create a DataLoader for the ImageNet-A dataset. Defaults to 1 element per batch.
@@ -186,7 +187,7 @@ def ResnetA(
         dataset,
         batch_size=1,
         shuffle=True,
-        num_workers=0,
+        num_workers=num_workers,
         collate_fn=collate_fn,
     )
 

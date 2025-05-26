@@ -43,7 +43,7 @@ if __name__ == "__main__":
     # exit()
 
     # accuracy, latency = bench(my_tpt, dataloader, device, reduce=200, comment=f"tpt {tta_steps} step {augmentations} lr {lr} - backprop ln layers")
-    accuracy, latency = bench(my_tpt, dataloader, device, reduce=200, comment=f" cancellami")
+    accuracy, latency = bench(my_tpt, dataloader, device, reduce=30, comment=f" asdwadsawds")
 
     print(f"Accuracy: {accuracy * 100:.2f}%")
     print(f"Latency: {latency * 1000:.2f} ms")

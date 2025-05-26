@@ -1,17 +1,21 @@
+from typing import Optional
+import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
 import torch.nn.functional as F
 import time
 from tqdm import tqdm
-from torch.utils.tensorboard import SummaryWriter
+import gc
 
+from torch.utils.tensorboard import SummaryWriter
 
 def bench(
     model: nn.Module,
     dataloader: DataLoader,
     device: str,
     comment: str,
-    reduce: int | None = None,
+    reduce: Optional[int | None] = None,
+    visualize: Optional[bool] = False,
 ):
     """Benchmark the model on the dataset.
 
@@ -30,13 +34,14 @@ def bench(
     # ascii=" ▖▘▝▗▚▞█"
     # ascii=' >='
     for image, label in tqdm(dataloader, total=total_tqdm, ascii=" ▖▘▝▗▚▞█"):
-        this_start = time.time()
-
         image = image.to(device)
 
         # start1 = time.time()
+        # with torch.no_grad(), torch.autocast("cuda"):
         pred_class = model(image)
         del image
+        gc.collect()
+        torch.cuda.empty_cache()
         # print(f"model: {(time.time() - start1) * 1000:.2f} ms")
 
         total += 1
@@ -51,6 +56,10 @@ def bench(
         board.add_scalar("dbg/label/predict_class", pred_class, total)
         board.add_scalar("dbg/label/label", label, total)
 
+        running_accuracy = correct / total
+
+        if visualize:
+            print(f"[{label} || {pred_class}] | Acc: [{running_accuracy*100:.2f}%]")
 
     end = time.time()
 
@@ -59,7 +68,7 @@ def bench(
 
     board.add_scalar("metrics/latency (ms)", latency)
     board.add_scalar("metrics/accuracy", accuracy)
-    
+
     print(f"Accuracy: {accuracy * 100:.2f}%")
     print(f"Latency: {latency * 1000:.2f} ms")
 

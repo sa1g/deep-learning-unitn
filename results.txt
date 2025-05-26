@@ -1,0 +1,71 @@
+first 100 images
+
+zero-shot-tpt.py (clip by OpenAI)
+    on the entire dataset, 7500 images, text_encoding pre-computed (init)
+        Accuracy: 49.37%
+        Latency: 9.25 ms
+
+0_baseline.py (openclip with OpenAI weights)
+    on 1200 images, text_encoding on the fly
+        Accuracy: 49.50%
+        Latency: 201.16 ms
+    on the entire dataset, 7500 images, text_encoding pre-computed (init)
+        Accuracy: 49.39%
+        Latency: 13.95 ms
+
+1_augment_top1.py
+    AUGMIX
+        with 63 augmentations, got the "best" (no original image)
+            Accuracy: 38.71%
+            Latency: 712.42 ms
+
+        with 63 augmentations, got the "best" and the original image
+            Accuracy: 38.71%
+            Latency: 701.06 ms
+
+        with 63 augmentation, get top 1% (only)
+            Accuracy: 38.71%
+            Latency: 685.74 ms
+
+        with 63 augmentation, get top 1% and original image
+            Accuracy: 38.71%
+            Latency: 685.74 ms
+
+    RANDOM_CROP
+        with 63 augmentations, got the "best" (no original image)
+            Accuracy: 58.06%
+            Latency: 351.77 ms
+
+        with 63 augmentations, got the "best" and the original image
+            Accuracy: 58.06%
+            Latency: 353.15 ms
+
+        with 63 augmentation, get top 1% (only)
+            Accuracy: 58.06%
+            Latency: 357.75 ms
+
+        with 63 augmentation, get top 1% and original image (global average pooling)
+            Accuracy: 58.06%
+            Latency: 351.49 ms
+
+        with 63 augmentation, get top 1% (50% weight) and original image (50% weight)
+            Accuracy: 51.61%
+            Latency: 353.18 ms    
+
+        with 64 augmentation, get top 1% and original image (global average), 7500 samples
+            Accuracy: 58.77%
+            Latency: 182.94 ms
+
+
+2_self_supervised_retrieval.py
+    with 63 aug, on 200 images, take the "closer" cluster and the original image
+        Accuracy: 55.72%
+        Latency: 234.35 ms
+
+
+4_duolingo.py
+    non cambia nulla, non ha senso lol
+
+5_tpt_con_1.py
+    
+
