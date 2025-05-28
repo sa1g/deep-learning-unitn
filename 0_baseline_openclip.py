@@ -11,7 +11,7 @@ from src.utils import bench
 
 
 from src.augmix import AugMixKornia, ImageTransform, kornia_preprocess
-from src.data import ResnetA
+from src.data import ImagenetA
 
 
 class ClipWrapper(nn.Module):
@@ -55,7 +55,7 @@ if __name__ == "__main__":
         # device="cpu"
     )
 
-    dataloader, dataset = ResnetA(augmenter)
+    dataloader, dataset = ImagenetA(augmenter)
 
     # Load the CLIP model
     clip_model, _, _ = open_clip.create_model_and_transforms(

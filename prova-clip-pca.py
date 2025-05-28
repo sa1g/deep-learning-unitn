@@ -15,7 +15,7 @@ from sklearn.decomposition import PCA
 from sklearn.preprocessing import minmax_scale
 
 from src.augmix import AugMixKornia, ImageTransform, kornia_preprocess
-from src.data import ResnetA
+from src.data import ImagenetA
 
 # from torch.utils.tensorboard import SummaryWriter
 from torch.utils.data import DataLoader
@@ -321,7 +321,7 @@ if __name__ == "__main__":
         n_views=63,
     )
 
-    dataloader, dataset = ResnetA(augmenter)
+    dataloader, dataset = ImagenetA(augmenter)
 
     # Load the CLIP model
     clip_model, _, _ = open_clip.create_model_and_transforms(

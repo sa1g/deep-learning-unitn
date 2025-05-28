@@ -12,7 +12,7 @@ from src.utils import bench
 
 
 from src.augmix import AugMixKornia, ImageTransform, kornia_preprocess, kornia_random_crop
-from src.data import ResnetA
+from src.data import ImagenetA
 
 from sklearn.cluster import KMeans
 import torchvision.transforms.functional as TF
@@ -270,7 +270,7 @@ if __name__ == "__main__":
         n_views=63,
     )
 
-    dataloader, dataset = ResnetA(augmenter)
+    dataloader, dataset = ImagenetA(augmenter)
 
     # Load the CLIP model
     clip_model, _, _ = open_clip.create_model_and_transforms(

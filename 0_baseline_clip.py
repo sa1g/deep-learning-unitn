@@ -13,7 +13,7 @@ import clip
 
 
 from src.augmix import AugMixKornia, ImageTransform, kornia_preprocess
-from src.data import ResnetA
+from src.data import ImagenetA
 from src.utils import bench
 
 
@@ -62,7 +62,7 @@ if __name__ == "__main__":
         n_views=0,
     )
 
-    dataloader, dataset = ResnetA(augmenter)
+    dataloader, dataset = ImagenetA(augmenter)
 
     # Load the CLIP model
     clip_model, _ = clip.load("ViT-B/16", device=device, jit=True)

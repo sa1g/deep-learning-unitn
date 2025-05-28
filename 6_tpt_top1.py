@@ -11,7 +11,7 @@ from src.utils import bench
 
 
 from src.augmix import AugMixKornia, ImageTransform, kornia_preprocess, kornia_random_crop
-from src.data import ResnetA
+from src.data import ImagenetA
 
 from typing import List, Tuple
 import numpy as np
@@ -542,7 +542,7 @@ if __name__ == "__main__":
         device="cpu"
     )
 
-    dataloader, dataset = ResnetA(augmenter, num_workers=5)
+    dataloader, dataset = ImagenetA(augmenter, num_workers=5)
 
     # Load the CLIP model
     clip_model, _, _ = open_clip.create_model_and_transforms(

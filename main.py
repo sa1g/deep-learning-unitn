@@ -4,7 +4,7 @@ torch.manual_seed(456)
 torch.cuda.manual_seed(456)
 
 from src.augmix import AugMixKornia, ImageTransform, kornia_preprocess, kornia_random_crop
-from src.data import ResnetA
+from src.data import ImagenetA
 from src.models import TPT
 
 from src.utils import bench
@@ -24,7 +24,7 @@ if __name__ == "__main__":
         device=device
     )
 
-    dataloader, dataset = ResnetA(augmenter)
+    dataloader, dataset = ImagenetA(augmenter)
 
     tta_steps = 1
     lr = 5e-3

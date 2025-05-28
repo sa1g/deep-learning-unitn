@@ -11,7 +11,7 @@ from src.utils import bench
 
 
 from src.augmix import AugMixKornia, ImageTransform, kornia_preprocess, kornia_random_crop
-from src.data import ResnetA
+from src.data import ImagenetA
 
 from typing import List, Tuple
 import numpy as np
@@ -29,10 +29,6 @@ from open_clip.transformer import text_global_pool
 @dataclass(frozen=True)
 class CLIPModels:
     ViTB32: str = "ViT-B/32"
-    # You can add more, but the `kornia_preprocess` should be modified accordingly
-    # ViTB16: str = "ViT-B/16"
-    # RN50: str = "RN50"
-
 
 class TPTPromptLearner(nn.Module):
     def __init__(
@@ -529,7 +525,7 @@ if __name__ == "__main__":
         device="cpu"
     )
 
-    dataloader, dataset = ResnetA(augmenter, num_workers=5)
+    dataloader, dataset = ImagenetA(augmenter, num_workers=5)
 
     # Load the CLIP model
     clip_model, _, _ = open_clip.create_model_and_transforms(

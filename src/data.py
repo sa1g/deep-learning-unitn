@@ -151,7 +151,7 @@ class ImageNetADataset(Dataset):
         """
         return self.idx_to_label[idx]
     
-def ResnetA(
+def ImagenetA(
     augmenter: ImageTransform,
     root_dir="datasets/imagenet-a",
     num_workers=0,

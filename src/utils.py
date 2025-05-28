@@ -45,10 +45,6 @@ def bench(
 
         times.append(start_event.elapsed_time(end_event))
 
-        # del image
-        # gc.collect()
-        # torch.cuda.empty_cache()
-
         total += 1
         correct += int((pred_class == label))
 
