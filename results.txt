@@ -36,7 +36,7 @@ zero-shot-tpt.py (clip by OpenAI)
             Accuracy: 58.06%
             Latency: 351.77 ms
 
-        with 63 augmentations, got the "best" and the original image
+        with 63 augmentations, got the "best" and he original imaget
             Accuracy: 58.06%
             Latency: 353.15 ms
 

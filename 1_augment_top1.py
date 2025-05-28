@@ -125,4 +125,4 @@ if __name__ == "__main__":
         clip_model, class_labels=dataset.class_code_to_label, device=device
     ).to(device)
 
-    bench(wrapper_clip, dataloader, device, reduce=None, comment="", visualize=False)
+    bench(wrapper_clip, dataloader, device, reduce=None, comment="top1", visualize=False)

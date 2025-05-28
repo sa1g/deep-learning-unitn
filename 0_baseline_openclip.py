@@ -52,6 +52,7 @@ if __name__ == "__main__":
     augmenter = ImageTransform(
         model_transform=kornia_preprocess,
         n_views=0,
+        # device="cpu"
     )
 
     dataloader, dataset = ResnetA(augmenter)
@@ -63,6 +64,7 @@ if __name__ == "__main__":
         pretrained="openai",
         device=device,
         force_quick_gelu=True,
+        jit = False
     )
     clip_model.eval()
 
@@ -71,4 +73,4 @@ if __name__ == "__main__":
         clip_model, class_labels=dataset.class_code_to_label, device=device
     ).to(device)
 
-    bench(wrapper_clip, dataloader, device, reduce=None, comment="", visualize=False)
+    bench(wrapper_clip, dataloader, device, reduce=None, comment="baseline1", visualize=False)

@@ -1,4 +1,5 @@
 from typing import Optional
+import numpy as np
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader
@@ -27,22 +28,26 @@ def bench(
     total = 0
     correct = 0
 
-    start = time.time()
+    times = []
 
     total_tqdm = reduce if reduce is not None else len(dataloader)
     # ░▒█
     # ascii=" ▖▘▝▗▚▞█"
     # ascii=' >='
+    start_event, end_event = torch.cuda.Event(enable_timing=True), torch.cuda.Event(enable_timing=True)
     for image, label in tqdm(dataloader, total=total_tqdm, ascii=" ▖▘▝▗▚▞█"):
         image = image.to(device)
 
-        # start1 = time.time()
-        # with torch.no_grad(), torch.autocast("cuda"):
+        start_event.record()
         pred_class = model(image)
-        del image
-        gc.collect()
-        torch.cuda.empty_cache()
-        # print(f"model: {(time.time() - start1) * 1000:.2f} ms")
+        end_event.record()
+        torch.cuda.synchronize()
+
+        times.append(start_event.elapsed_time(end_event))
+
+        # del image
+        # gc.collect()
+        # torch.cuda.empty_cache()
 
         total += 1
         correct += int((pred_class == label))
@@ -61,15 +66,13 @@ def bench(
         if visualize:
             print(f"[{label} || {pred_class}] | Acc: [{running_accuracy*100:.2f}%]")
 
-    end = time.time()
-
     accuracy = correct / total
-    latency = (end - start) / total  # ms
+    latency = (np.array(times).sum() / total).item()  # ms
 
     board.add_scalar("metrics/latency (ms)", latency)
     board.add_scalar("metrics/accuracy", accuracy)
 
     print(f"Accuracy: {accuracy * 100:.2f}%")
-    print(f"Latency: {latency * 1000:.2f} ms")
+    print(f"Latency: {latency:.2f} ms")
 
     return accuracy, latency

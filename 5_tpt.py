@@ -535,7 +535,7 @@ if __name__ == "__main__":
     clip_model, _, _ = open_clip.create_model_and_transforms(
         # model_name="ViT-B-32", pretrained="datacomp_xl_s13b_b90k", device=device#, force_quick_gelu=True
         model_name="ViT-B-16",
-        pretrained="openai",
+        pretrained="openai",    
         device=device,
         force_quick_gelu=True,
     )
@@ -554,4 +554,4 @@ if __name__ == "__main__":
         lr=5e-3,
     )
 
-    bench(wrapper_clip, dataloader, device, reduce=None, comment="", visualize=False)
+    bench(wrapper_clip, dataloader, device, reduce=None, comment="tpt", visualize=False)

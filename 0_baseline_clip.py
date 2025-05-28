@@ -65,10 +65,10 @@ if __name__ == "__main__":
     dataloader, dataset = ResnetA(augmenter)
 
     # Load the CLIP model
-    clip_model, _ = clip.load("ViT-B/16", device=device)
+    clip_model, _ = clip.load("ViT-B/16", device=device, jit=True)
     clip_model.eval()
 
     # Create a ClipSkeleton instance
     wrapper_clip = ClipWrapper(clip_model, class_labels=dataset.class_code_to_label, device=device).to(device)
 
-    bench(wrapper_clip, dataloader, device, reduce=None, comment="", visualize=False)
+    bench(wrapper_clip, dataloader, device, reduce=None, comment="baseline clip1", visualize=False)

@@ -539,9 +539,10 @@ if __name__ == "__main__":
         model_transform=kornia_preprocess,
         custom_transform=kornia_random_crop,
         n_views=63,
+        device="cpu"
     )
 
-    dataloader, dataset = ResnetA(augmenter)
+    dataloader, dataset = ResnetA(augmenter, num_workers=5)
 
     # Load the CLIP model
     clip_model, _, _ = open_clip.create_model_and_transforms(
@@ -566,4 +567,4 @@ if __name__ == "__main__":
         lr=5e-3,
     )
 
-    bench(wrapper_clip, dataloader, device, reduce=30, comment="", visualize=False)
+    bench(wrapper_clip, dataloader, device, reduce=None, comment="tpt-top1", visualize=False)
