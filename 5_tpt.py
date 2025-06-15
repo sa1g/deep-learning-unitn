@@ -189,8 +189,6 @@ class TPTPromptLearner(nn.Module):
         return prompts
 
     def reset(self) -> None:
-        # TODO: check, doin without `data`
-
         # self.embedded_prefix.data.copy_(self.init_state_prefix)
         # self.embedded_suffix.data.copy_(self.init_state_suffix)
         with torch.no_grad():
