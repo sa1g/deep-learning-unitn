@@ -10,6 +10,7 @@ import gc
 
 from torch.utils.tensorboard import SummaryWriter
 
+
 def bench(
     model: nn.Module,
     dataloader: DataLoader,
@@ -23,7 +24,7 @@ def bench(
     The model must return logits.
     """
 
-    board = SummaryWriter(comment=comment)
+    board = SummaryWriter(log_dir=f"runs/{comment}")
 
     total = 0
     correct = 0
@@ -34,7 +35,9 @@ def bench(
     # ░▒█
     # ascii=" ▖▘▝▗▚▞█"
     # ascii=' >='
-    start_event, end_event = torch.cuda.Event(enable_timing=True), torch.cuda.Event(enable_timing=True)
+    start_event, end_event = torch.cuda.Event(enable_timing=True), torch.cuda.Event(
+        enable_timing=True
+    )
     for image, label in tqdm(dataloader, total=total_tqdm, ascii=" ▖▘▝▗▚▞█"):
         image = image.to(device)
 
