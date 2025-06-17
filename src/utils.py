@@ -24,7 +24,9 @@ def bench(
     The model must return logits.
     """
 
-    board = SummaryWriter(log_dir=f"runs/{comment}")
+    today_now = time.strftime("%Y-%m-%d_%H-%M-%S", time.localtime())
+
+    board = SummaryWriter(log_dir=f"runs/{today_now}/{comment}")
 
     total = 0
     correct = 0
