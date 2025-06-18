@@ -32,7 +32,7 @@ model after every test instance adaptation.
 ### Idea - [Link](https://chat.deepseek.com/a/chat/s/fc66a5b4-3567-4772-aab8-c2b86788c712)
 
 SITA works on batch norm. CLIP has only layer norm. By playing with
-TPT we already have the augmented views and a wa to keep the _best_ (entropy). The idea is to:
+TPT we already have the augmented vjews and a wa to keep the _best_ (entropy). The idea is to:
 1. calculate per-instance statistics ($\sigma, \mu$) using the best augmented view
 2. aggregate: average
 3. use adapted statistics  
