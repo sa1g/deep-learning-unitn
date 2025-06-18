@@ -6,7 +6,7 @@ In particular, we focus on **TTA for image classification**, particularly using 
 
 <!--- visualize image using html formatting, so that i can scale it properly -->
 <p align="center">
-  <img src="img/tpt.png" alt="Test-Time Prompt Tuning (TPT) for CLIP" title="Test-Time Prompt Tuning (TPT) for CLIP" width="600" class="center"/><br>
+  <img src="plot/tpt.png" alt="Test-Time Prompt Tuning (TPT) for CLIP" title="Test-Time Prompt Tuning (TPT) for CLIP" width="600" class="center"/><br>
   <em>Figure 1: Test-Time Prompt Tuning (TPT) for CLIP</em>
 </p>
 
