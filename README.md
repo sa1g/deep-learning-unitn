@@ -1,4 +1,4 @@
-# Test-Time Adaptation (TTA) for image classification 🖼️
+# 🖼️ Test-Time Adaptation (TTA) for image classification
 
 In this project, we work on **Test-Time Adaptation (TTA)**, which has recently gained traction due to its ability to enhance model performance without requiring access to training data. It involves improving the robustness of a pre-trained neural network to a test dataset, possibly by improving the network’s predictions on one test sample at a time.
 
@@ -6,18 +6,18 @@ In particular, we focus on **TTA for image classification**, particularly using 
 
 <!--- visualize image using html formatting, so that i can scale it properly -->
 <p align="center">
-  <img src="img/tpt.png" alt="Test-Time Prompt Tuning (TPT) for CLIP" title="Test-Time Prompt Tuning (TPT) for CLIP" width="600" class="center"/><br>
+  <img src="plot/tpt.png" alt="Test-Time Prompt Tuning (TPT) for CLIP" title="Test-Time Prompt Tuning (TPT) for CLIP" width="600" class="center"/><br>
   <em>Figure 1: Test-Time Prompt Tuning (TPT) for CLIP</em>
 </p>
 
 Additionally, we experiment with different techiqnues and approaches to try improving either the accuracy or inference speed of the model.
 
 
-## Setup 🚀
+## 🚀 Setup
 
 The project is entirely self contained inside the jupyter notebook `report.ipynb`. It can be run using [Google Colab](https://colab.research.google.com/).
 
-## Project Overview 🧠
+## 🧠 Project Overview
 
 1. Baseline - ZeroShot CLIP
 1. Reproducing TPT: 
@@ -35,7 +35,7 @@ The project is entirely self contained inside the jupyter notebook `report.ipynb
    - D. TNT (Recreate the paper) [[5](#ref-dinov2)]
    - E. TNT with Top 10%
   
-## References
+## 📚 References
 
 1. <a id="ref-liang2025"></a> Liang J., He R., Tan T. (2025). _A Comprehensive Survey on Test-Time Adaptation Under Distribution Shifts_. IJCV, 133, 31-64, [Link](https://doi.org/10.1007/s11263-024-02181-w)
 1. <a id="ref-clip2021"></a> Radford A., Kim K. J., Hallacy C., et al. (2021). _Learning Transferable Visual Models From Natural Language Supervision_. ICML 2021, 8748-8763, [Link](https://arxiv.org/abs/2103.00020)
