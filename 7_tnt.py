@@ -291,7 +291,7 @@ if __name__ == "__main__":
     augmenter = ImageTransform(
         model_transform=kornia_preprocess,
         custom_transform=kornia_random_crop,
-        n_views=51,
+        n_views=63,
         device="cpu",
     )
 
