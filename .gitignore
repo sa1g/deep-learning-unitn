@@ -2,6 +2,9 @@ datasets/
 dataset/
 working_directory/
 runs/
+old/
+runs_vere/
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
