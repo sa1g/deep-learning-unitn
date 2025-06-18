@@ -31,6 +31,15 @@ The project is entirely self contained inside the jupyter notebook `report.ipynb
 1. Trying to get better at TTA (**Our contribution**)
    - A. Augment Top 10%
    - B. TPT with Top 10%
-   - C. Self-Supervised Retrieval (Inspired by DinoV2) [[4](#ref-dinov2)]
-   - D. TNT (Recreate the paper)
+   - C. Self-Supervised Retrieval (Inspired by DinoV2) [[6](#ref-dinov2)]
+   - D. TNT (Recreate the paper) [[5](#ref-dinov2)]
    - E. TNT with Top 10%
+  
+## References
+
+1. <a id="ref-liang2025"></a> Liang J., He R., Tan T. (2025). _A Comprehensive Survey on Test-Time Adaptation Under Distribution Shifts_. IJCV, 133, 31-64, [Link](https://doi.org/10.1007/s11263-024-02181-w)
+1. <a id="ref-clip2021"></a> Radford A., Kim K. J., Hallacy C., et al. (2021). _Learning Transferable Visual Models From Natural Language Supervision_. ICML 2021, 8748-8763, [Link](https://arxiv.org/abs/2103.00020)
+1. <a id="ref-tpt2022"></a> Shu M., Nie W., Huang D., et al. (2022). _Test-time Prompt Tuning for Zero-Shot Generalization in Vision-Language Models_. NeurIPS 2022, [Link](https://arxiv.org/abs/2209.07511)
+1. <a id="ref-coop2021"></a> Zhou K., Yang J. Loy C. C., Liu Z. (2021). _Learning to Prompt for Vision-Language Models_. CoRR 2021, [Link](https://arxiv.org/abs/2109.01134)
+1. <a id="ref-tnt2025"></a> Imam R., et al. (2025). _Noise is an Efficient Learner for Zero-Shot Vision-Language Models_ [Link](https://arxiv.org/abs/2502.06019)
+1. <a id="ref-tnt2025"></a> Oquab M., et al. (2023). _DINOv2: Learning Robust Visual Features without Supervision_ [Link](https://arxiv.org/abs/2304.07193)
