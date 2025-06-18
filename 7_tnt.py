@@ -299,7 +299,6 @@ if __name__ == "__main__":
 
     # Load the CLIP model
     clip_model, _, _ = open_clip.create_model_and_transforms(
-        # model_name="ViT-B-32", pretrained="datacomp_xl_s13b_b90k", device=device#, force_quick_gelu=True
         model_name="ViT-B-16",
         pretrained="openai",
         device=device,
@@ -327,7 +326,7 @@ if __name__ == "__main__":
         wrapper_clip,
         dataloader,
         device,
-        reduce=1000,
+        reduce=None,
         comment="tnt-totale",
         visualize=False,
     )
